@@ -126,13 +126,13 @@ def run_normal(lr=0.001,
     # target side
     decemb = q.WordEmb(embdim, worddic=flD)
     decinpdim = embdim
-    decdims = [decinpdim] + [encdim] * numlayer
+    decdims = [decinpdim] + [encdim*2] * numlayer
     dec_core = torch.nn.Sequential(
         *[q.rnn.LSTMCell(decdims[i-1], decdims[i]) for i in range(1, len(decdims))]
     )
-    att = phraseatt.model.FwdAttention(qrydim=encdim, ctxdim=encdim*2, encdim=encdim)
+    att = phraseatt.model.BasicAttention()
     out = torch.nn.Sequential(
-        q.WordLinout(encdim+encdim*2, worddic=flD),
+        q.WordLinout(encdim*2+encdim*2, worddic=flD),
         # torch.nn.Softmax(-1)
     )
     deccell = q.rnn.DecoderCell(emb=decemb, core=dec_core,
