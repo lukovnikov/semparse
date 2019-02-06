@@ -9,12 +9,15 @@ class EncDec(torch.nn.Module):
     def __init__(self, inpemb, enc, dec, **kw):
         super(EncDec, self).__init__(**kw)
         self.inpemb, self.enc, self.dec = inpemb, enc, dec
+        self.enc.ret_all_states = True
 
     def forward(self, inpseq, outseq):
         inpemb, ctx_mask = self.inpemb(inpseq)
-        ctx = self.enc(inpemb, mask=ctx_mask)
+        ctx, states = self.enc(inpemb, mask=ctx_mask, ret_states=True)
         if ctx_mask is not None and ctx_mask.size(1) > ctx.size(1):
             ctx_mask = ctx_mask[:, :ctx.size(1)]
+        self.dec.cell.core[-1].y_0 = states[-1][0]
+        self.dec.cell.core[-1].c_0 = states[-1][1]
         outprobs = self.dec(outseq, ctx=ctx, ctx_mask=ctx_mask)
         return outprobs
 
@@ -23,13 +26,16 @@ class Test_EncDec(torch.nn.Module):
     def __init__(self, inpemb, enc, dec, **kw):
         super(Test_EncDec, self).__init__(**kw)
         self.inpemb, self.enc, self.dec = inpemb, enc, dec
+        self.enc.ret_all_states = True
 
     def forward(self, inpseq, outseq):  # (batsize, inpseqlen), (batsize, outseqlen)
         inpemb, ctx_mask = self.inpemb(inpseq)
-        ctx = self.enc(inpemb, mask=ctx_mask)
+        ctx, states = self.enc(inpemb, mask=ctx_mask, ret_states=True)
         if ctx_mask is not None and ctx_mask.size(1) > ctx.size(1):
             ctx_mask = ctx_mask[:, :ctx.size(1)]
         _outseq = outseq[:, 0]
+        self.dec.cell.core[-1].y_0 = states[-1][0]
+        self.dec.cell.core[-1].c_0 = states[-1][1]
         outprobs = self.dec(_outseq, ctx=ctx, ctx_mask=ctx_mask)
         outprobs = outprobs[:, :outseq.size(1)]
         return outprobs
@@ -55,26 +61,29 @@ def gen_datasets(which="geo"):
     else:
         raise q.SumTingWongException("unknown dataset")
 
-    nlsm = q.StringMatrix()
+    nlsm = q.StringMatrix(indicate_start_end=True)
     nlsm.tokenize = lambda x: x.split()
-    flsm = q.StringMatrix()
+    flsm = q.StringMatrix(indicate_start_end=True)
     flsm.tokenize = lambda x: x.split()
     devstart, teststart, i = 0, 0, 0
     with open(trainp) as tf, open(validp) as vf, open(testp) as xf:
         for line in tf:
             line_nl, line_fl = line.strip().split("\t")
+            line_nl = " ".join(line_nl.split(" ")[::-1])
             nlsm.add(line_nl)
             flsm.add(line_fl)
             i += 1
         devstart = i
         for line in vf:
             line_nl, line_fl = line.strip().split("\t")
+            line_nl = " ".join(line_nl.split(" ")[::-1])
             nlsm.add(line_nl)
             flsm.add(line_fl)
             i += 1
         teststart = i
         for line in xf:
             line_nl, line_fl = line.strip().split("\t")
+            line_nl = " ".join(line_nl.split(" ")[::-1])
             nlsm.add(line_nl)
             flsm.add(line_fl)
             i += 1
@@ -123,18 +132,18 @@ def run_normal(lr=0.001,
     # source side
     inpemb = q.WordEmb(embdim, worddic=nlD)
     encdims = [encdim] * numlayer
-    encoder = q.LSTMEncoder(embdim, *encdims, bidir=True, dropout_in_shared=dropout)
+    encoder = q.LSTMEncoder(embdim, *encdims, bidir=False, dropout_in_shared=dropout)
 
     # target side
     decemb = q.WordEmb(embdim, worddic=flD)
     decinpdim = embdim
-    decdims = [decinpdim] + [encdim*2] * numlayer
+    decdims = [decinpdim] + [encdim] * numlayer
     dec_core = torch.nn.Sequential(
         *[q.rnn.LSTMCell(decdims[i-1], decdims[i], dropout_in=dropout) for i in range(1, len(decdims))]
     )
     att = phraseatt.model.BasicAttention()
     out = torch.nn.Sequential(
-        q.WordLinout(encdim*2+encdim*2, worddic=flD),
+        q.WordLinout(encdim+encdim, worddic=flD),
         # torch.nn.Softmax(-1)
     )
     deccell = q.rnn.DecoderCell(emb=decemb, core=dec_core,
