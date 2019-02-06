@@ -161,6 +161,7 @@ def run_normal(lr=0.001,
     # region training
     # losses:
     ce = q.loss.CELoss(mode="logits", ignore_index=0)
+    ce = q.loss.SmoothedCELoss(mode="logits", ignore_index=0, smoothing=0.1)
     acc = q.loss.SeqAccuracy(ignore_index=0)
     elemacc = q.loss.SeqElemAccuracy(ignore_index=0)
     # optim
