@@ -162,7 +162,7 @@ def run_normal(lr=0.001,
     trainloop = partial(q.train_epoch, model=train_encdec, dataloader=tloader, optim=optim, device=device,
                         losses=[q.LossWrapper(ce), q.LossWrapper(acc), q.LossWrapper(elemacc)],
                         print_every_batch=False, _train_batch=batchloop)
-    validloop = partial(q.test_epoch, model=test_encdec, dataloader=vloader, device=device,
+    validloop = partial(q.test_epoch, model=train_encdec, dataloader=vloader, device=device,
                         losses=[q.LossWrapper(ce), q.LossWrapper(acc), q.LossWrapper(elemacc)],
                         print_every_batch=False)
 
@@ -171,7 +171,8 @@ def run_normal(lr=0.001,
     tt.tock("trained")
 
     tt.tick("testing")
-    test_results = validloop(dataloader=xloader)
+
+    test_results = validloop(model=test_encdec, dataloader=xloader)
     print("Test results: {}".format(test_results))
     tt.tock("tested")
     # endregion
