@@ -100,6 +100,8 @@ def run_normal(lr=0.001,
         numlayer=2,
         cuda=False,
         gpu=0,
+        wreg=1e-8,
+        dropout=0.5,
         which="geo"):
     tt = q.ticktock("script")
     tt.msg("running normal att")
@@ -121,14 +123,14 @@ def run_normal(lr=0.001,
     # source side
     inpemb = q.WordEmb(embdim, worddic=nlD)
     encdims = [encdim] * numlayer
-    encoder = q.LSTMEncoder(embdim, *encdims, bidir=True)
+    encoder = q.LSTMEncoder(embdim, *encdims, bidir=True, dropout_in_shared=dropout)
 
     # target side
     decemb = q.WordEmb(embdim, worddic=flD)
     decinpdim = embdim
     decdims = [decinpdim] + [encdim*2] * numlayer
     dec_core = torch.nn.Sequential(
-        *[q.rnn.LSTMCell(decdims[i-1], decdims[i]) for i in range(1, len(decdims))]
+        *[q.rnn.LSTMCell(decdims[i-1], decdims[i], dropout_in=dropout) for i in range(1, len(decdims))]
     )
     att = phraseatt.model.BasicAttention()
     out = torch.nn.Sequential(
@@ -153,7 +155,7 @@ def run_normal(lr=0.001,
     acc = q.loss.SeqAccuracy(ignore_index=0)
     elemacc = q.loss.SeqElemAccuracy(ignore_index=0)
     # optim
-    optim = torch.optim.Adam(train_encdec.parameters(), lr=lr)
+    optim = torch.optim.Adam(train_encdec.parameters(), lr=lr, weight_decay=wreg)
     clipgradnorm = lambda: torch.nn.utils.clip_grad_norm(train_encdec.parameters(), max_norm=gradnorm)
     # lööps
     batchloop = partial(q.train_batch, on_before_optim_step=[clipgradnorm])
