@@ -184,9 +184,10 @@ def run_normal(lr=0.001,
     tt.tock("trained")
 
     tt.tick("testing")
-
     test_results = validloop(model=test_encdec, dataloader=xloader)
-    print("Test results: {}".format(test_results))
+    print("Test results (freerunning): {}".format(test_results))
+    test_results = validloop(model=train_encdec, dataloader=xloader)
+    print("Test results (TF): {}".format(test_results))
     tt.tock("tested")
     # endregion
     tt.msg("done")
