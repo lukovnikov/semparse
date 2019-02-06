@@ -16,8 +16,8 @@ class EncDec(torch.nn.Module):
         ctx, states = self.enc(inpemb, mask=ctx_mask, ret_states=True)
         if ctx_mask is not None and ctx_mask.size(1) > ctx.size(1):
             ctx_mask = ctx_mask[:, :ctx.size(1)]
-        self.dec.cell.core[-1].y_tm1 = states[-1][0]
-        self.dec.cell.core[-1].c_tm1 = states[-1][1]
+        self.dec.cell.core[-1].y_tm1 = states[-1][0].squeeze(1)
+        self.dec.cell.core[-1].c_tm1 = states[-1][1].squeeze(1)
         outprobs = self.dec(outseq, ctx=ctx, ctx_mask=ctx_mask)
         return outprobs
 
@@ -34,8 +34,8 @@ class Test_EncDec(torch.nn.Module):
         if ctx_mask is not None and ctx_mask.size(1) > ctx.size(1):
             ctx_mask = ctx_mask[:, :ctx.size(1)]
         _outseq = outseq[:, 0]
-        self.dec.cell.core[-1].y_tm1 = states[-1][0]
-        self.dec.cell.core[-1].c_tm1 = states[-1][1]
+        self.dec.cell.core[-1].y_tm1 = states[-1][0].squeeze(1)
+        self.dec.cell.core[-1].c_tm1 = states[-1][1].squeeze(1)
         outprobs = self.dec(_outseq, ctx=ctx, ctx_mask=ctx_mask)
         outprobs = outprobs[:, :outseq.size(1)]
         return outprobs
