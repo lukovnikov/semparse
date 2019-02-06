@@ -111,6 +111,7 @@ def run_normal(lr=0.001,
         gpu=0,
         wreg=1e-8,
         dropout=0.5,
+        smoothing=0.1,
         which="geo"):
     tt = q.ticktock("script")
     tt.msg("running normal att")
@@ -160,8 +161,10 @@ def run_normal(lr=0.001,
 
     # region training
     # losses:
-    ce = q.loss.CELoss(mode="logits", ignore_index=0)
-    ce = q.loss.SmoothedCELoss(mode="logits", ignore_index=0, smoothing=0.1)
+    if smoothing == 0:
+        ce = q.loss.CELoss(mode="logits", ignore_index=0)
+    else:
+        ce = q.loss.SmoothedCELoss(mode="logits", ignore_index=0, smoothing=smoothing)
     acc = q.loss.SeqAccuracy(ignore_index=0)
     elemacc = q.loss.SeqElemAccuracy(ignore_index=0)
     # optim
