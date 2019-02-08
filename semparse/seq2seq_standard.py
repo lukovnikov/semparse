@@ -111,7 +111,8 @@ def run_normal(lr=0.001,
         gpu=0,
         wreg=1e-8,
         dropout=0.5,
-        smoothing=0.1,
+        smoothing=0.,
+        goldsmoothing=-0.1,
         which="geo"):
     tt = q.ticktock("script")
     tt.msg("running normal att")
@@ -163,8 +164,10 @@ def run_normal(lr=0.001,
     # losses:
     if smoothing == 0:
         ce = q.loss.CELoss(mode="logits", ignore_index=0)
-    else:
+    elif goldsmoothing < 0.:
         ce = q.loss.SmoothedCELoss(mode="logits", ignore_index=0, smoothing=smoothing)
+    else:
+        ce = q.loss.DiffSmoothedCELoss(mode="logits", ignore_index=0, alpha=goldsmoothing, beta=smoothing)
     acc = q.loss.SeqAccuracy(ignore_index=0)
     elemacc = q.loss.SeqElemAccuracy(ignore_index=0)
     # optim
