@@ -235,7 +235,7 @@ def run_relatt(lr=0.001,
     dec_core = torch.nn.Sequential(
         *[q.rnn.LSTMCell(decdims[i-1], decdims[i], dropout_in=dropout) for i in range(1, len(decdims))]
     )
-    att = phraseatt.model.RelAttention(ctxdim=encdim, vecdim=encdim)
+    att = phraseatt.model.ComboRelAttention(ctxdim=encdim, vecdim=encdim)
     out = torch.nn.Sequential(
         q.WordLinout(encdim+encdim, worddic=flD),
         # torch.nn.Softmax(-1)
