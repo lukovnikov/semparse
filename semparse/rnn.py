@@ -41,7 +41,7 @@ class PointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaskedOut
 
     @ctx_ids.setter
     def ctx_ids(self, value):
-        self._ctx_ids = self.sourcemap[value]       # maps to output dict when setting ctx_ids
+        self._ctx_ids = self.sourcemap[value]       # already maps to output dict when setting ctx_ids
 
     def batch_reset(self):
         self._ctx_ids = None
@@ -54,8 +54,10 @@ class PointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaskedOut
         """
         :param x:       vector for generation
         :param scores:  attention scores (unnormalized)     (batsize, seqlen)
-        :return:
+        :return:        probabilities over output tokens
         """
+        assert(self._ctx_ids is not None)
+
         out_gen = self.genout(x)        # output scores from generator      (batsize, outvocsize)
         out_gen = torch.nn.functional.softmax(out_gen, -1)
 
