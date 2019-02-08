@@ -63,7 +63,7 @@ def gen_datasets(which="geo"):
 
     nlsm = q.StringMatrix(indicate_start_end=True)
     nlsm.tokenize = lambda x: x.split()
-    flsm = q.StringMatrix(indicate_start_end=True)
+    flsm = q.StringMatrix(indicate_start_end=True if which == "jobs" else False)
     flsm.tokenize = lambda x: x.split()
     devstart, teststart, i = 0, 0, 0
     with open(trainp) as tf, open(validp) as vf, open(testp) as xf:
