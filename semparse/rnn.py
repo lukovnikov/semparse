@@ -64,12 +64,15 @@ class PointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaskedOut
         # region copying:
         alphas = torch.nn.functional.softmax(scores, -1)
         out_cpy = torch.zeros_like(out_gen)     # (batsize, outvocsize)
-        out_cpy.scatter_add_(-1, self._ctx_ids, alphas)
+        ctx_ids = self._ctx_ids
+        if alphas.size(1) < self._ctx_ids.size(1):
+            ctx_ids = ctx_ids[:, :alphas.size(1)]
+        out_cpy.scatter_add_(-1, ctx_ids, alphas)
         # endregion
 
         # mix
         mix = self.gate(x)      # (batsize, 2)
-        out = out_gen * mix[0] + out_cpy * mix[1]
+        out = out_gen * mix[:, 0].unsqueeze(1) + out_cpy * mix[:, 1].unsqueeze(1)
 
         # region automasking
         if self.automasker is not None:
