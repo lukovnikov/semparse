@@ -2,7 +2,7 @@
 import qelos as q
 import torch
 from functools import partial
-import phraseatt
+from semparse.attention import *
 import numpy as np
 from semparse.trees import parse as tparse
 
@@ -192,9 +192,9 @@ def run_normal(lr=0.01,
         *[q.rnn.LSTMCell(decdims[i-1], decdims[i], dropout_in=dropout) for i in range(1, len(decdims))]
     )
     if relatt:
-        att = phraseatt.model.ComboRelAttention(ctxdim=encdim, vecdim=encdim)
+        att = ComboAbsRelAttention(ctxdim=encdim, vecdim=encdim)
     else:
-        att = phraseatt.model.BasicAttention()
+        att = BasicAttention()
     out = torch.nn.Sequential(
         q.WordLinout(encdim, worddic=flD),
         # torch.nn.Softmax(-1)
