@@ -149,7 +149,7 @@ class TreeAccuracyLambdaDFPar(torch.nn.Module):
 def run_normal(lr=0.01,
                gradclip=5.,
                batsize=20,
-               epochs=150,
+               epochs=80,
                embdim=200,
                encdim=200,
                numlayer=1,
@@ -229,7 +229,7 @@ def run_normal(lr=0.01,
     # lööps
     batchloop = partial(q.train_batch, on_before_optim_step=[clipgradnorm])
     trainloop = partial(q.train_epoch, model=train_encdec, dataloader=tloader, optim=optim, device=device,
-                        losses=[q.LossWrapper(ce), q.LossWrapper(acc), q.LossWrapper(elemacc)],
+                        losses=[q.LossWrapper(ce), q.LossWrapper(elemacc), q.LossWrapper(acc)],
                         print_every_batch=False, _train_batch=batchloop)
     validloop = partial(q.test_epoch, model=test_encdec, dataloader=vloader, device=device,
                         losses=[q.LossWrapper(treeacc)],
