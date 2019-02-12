@@ -3,6 +3,7 @@ import torch
 from functools import partial
 import phraseatt
 import numpy as np
+from semparse.trees import parse as tparse
 
 
 class EncDec(torch.nn.Module):
@@ -44,17 +45,17 @@ class Test_EncDec(torch.nn.Module):
 def gen_datasets(which="geo"):
     pprefix = "../data/"
     if which == "geo":
-        pprefix = pprefix + "geoqueries/"
+        pprefix = pprefix + "geoqueries/dong2016/"
         trainp = pprefix + "train.txt"
         validp = pprefix + "test.txt"
         testp = pprefix + "test.txt"
     elif which == "atis":
-        pprefix += "atis/"
+        pprefix += "atis/dong2016/"
         trainp = pprefix + "train.txt"
         validp = pprefix + "dev.txt"
         testp = pprefix + "test.txt"
     elif which == "jobs":
-        pprefix += "jobqueries"
+        pprefix += "jobqueries/dong2016/"
         trainp = pprefix + "train.txt"
         validp = pprefix + "test.txt"
         testp = pprefix + "test.txt"
@@ -100,20 +101,64 @@ def gen_datasets(which="geo"):
     return (tds, vds, xds), nlsm.D, flsm.D
 
 
-def run_normal(lr=0.001,
-        gradnorm=1.,
-        batsize=10,
-        epochs=150,
-        embdim=50,
-        encdim=100,
-        numlayer=2,
-        cuda=False,
-        gpu=0,
-        wreg=1e-8,
-        dropout=0.5,
-        smoothing=0.,
-        goldsmoothing=-0.1,
-        which="geo"):
+class TreeAccuracyLambdaDFPar(torch.nn.Module):
+    def __init__(self, flD, reduction="mean", **kw):
+        super(TreeAccuracyLambdaDFPar, self).__init__(**kw)
+        self.flD = flD
+        self.rflD = {v: k for k, v in flD.items()}
+        self.parsef = tparse.parse_lambda_depth_first_parentheses
+        self.masktoken = "<MASK>"
+        self.reduction = reduction
+
+    def forward(self, probs, gold):     # probs: (batsize, seqlen, outvocsize)
+        # build gold trees
+        def parsetree(row):
+            row = row.cpu().numpy()
+            tree = ["("] + [self.rflD[x] for x in row if self.rflD[x] != self.masktoken]
+            numunmatched = tree.count("(") - tree.count(")")
+            tree += [")"] * max(0, numunmatched)     # too few --> add some
+            if numunmatched < 0:        # too many --> stop where zero depth is reached
+                depth = 0
+                for i in range(len(tree)):
+                    if tree[i] == "(":
+                        depth += 1
+                    elif tree[i] == ")":
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    else: pass
+                tree = tree[:i+1]
+            tree = self.parsef(" ".join(tree))
+            return tree
+        predseq = torch.argmax(probs, 2)
+        predtrees = [parsetree(prow) for prow in predseq]
+        goldtrees = [parsetree(grow) for grow in gold]
+        same = [float(x == y) for x, y in zip(goldtrees, predtrees)]
+        same = torch.tensor(same)
+
+        if self.reduction in ["mean", "elementwise_mean"]:
+            samesum = same.sum() / same.size(0)
+        elif self.reduction == "sum":
+            samesum = same.sum()
+        else:
+            samesum = same
+        return samesum
+
+
+def run_normal(lr=0.01,
+               gradclip=5.,
+               batsize=20,
+               epochs=150,
+               embdim=200,
+               encdim=200,
+               numlayer=1,
+               cuda=False,
+               gpu=0,
+               wreg=1e-8,
+               dropout=0.5,
+               smoothing=0.,
+               goldsmoothing=-0.1,
+               which="geo"):
     tt = q.ticktock("script")
     tt.msg("running normal att")
     device = torch.device("cpu")
@@ -148,8 +193,9 @@ def run_normal(lr=0.001,
         q.WordLinout(encdim+encdim, worddic=flD),
         # torch.nn.Softmax(-1)
     )
+    merge = q.rnn.FwdDecCellMerge(decdims[-1], encdims[-1])
     deccell = q.rnn.DecoderCell(emb=decemb, core=dec_core,
-                               att=att, out=out)
+                               att=att, out=out, merge=merge)
     train_dec = q.TFDecoder(deccell)
     test_dec = q.FreeDecoder(deccell, maxtime=seqlen+10)
     train_encdec = EncDec(inpemb, encoder, train_dec)
@@ -170,16 +216,17 @@ def run_normal(lr=0.001,
         ce = q.loss.DiffSmoothedCELoss(mode="logits", ignore_index=0, alpha=goldsmoothing, beta=smoothing)
     acc = q.loss.SeqAccuracy(ignore_index=0)
     elemacc = q.loss.SeqElemAccuracy(ignore_index=0)
+    treeacc = TreeAccuracyLambdaDFPar(flD=flD)
     # optim
-    optim = torch.optim.Adam(train_encdec.parameters(), lr=lr, weight_decay=wreg)
-    clipgradnorm = lambda: torch.nn.utils.clip_grad_norm(train_encdec.parameters(), max_norm=gradnorm)
+    optim = torch.optim.RMSprop(train_encdec.parameters(), lr=lr, alpha=0.95, weight_decay=wreg)
+    clipgradnorm = lambda: torch.nn.utils.clip_grad_value_(train_encdec.parameters(), clip_value=gradclip)
     # lööps
     batchloop = partial(q.train_batch, on_before_optim_step=[clipgradnorm])
     trainloop = partial(q.train_epoch, model=train_encdec, dataloader=tloader, optim=optim, device=device,
                         losses=[q.LossWrapper(ce), q.LossWrapper(acc), q.LossWrapper(elemacc)],
                         print_every_batch=False, _train_batch=batchloop)
-    validloop = partial(q.test_epoch, model=train_encdec, dataloader=vloader, device=device,
-                        losses=[q.LossWrapper(ce), q.LossWrapper(acc), q.LossWrapper(elemacc)],
+    validloop = partial(q.test_epoch, model=test_encdec, dataloader=vloader, device=device,
+                        losses=[q.LossWrapper(treeacc)],
                         print_every_batch=False)
 
     tt.tick("training")

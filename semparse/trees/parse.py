@@ -10,20 +10,24 @@ def parse_lambda_depth_first_parentheses(s):
     :param s:
     :return:
     """
-    ret = []
-    splits = s.split()[1:-1]
-    stack = []
-    stack.append(ret)
-    for i in range(len(splits)):
-        if splits[i] == "(":
-            stack[-1].append([])
-            stack.append(stack[-1][-1])
-        elif splits[i] == ")":
-            stack.pop(-1)
-        else:
-            stack[-1].append(splits[i])
-    return nested_lists_to_tree(ret)
-
+    try:
+        ret = []
+        splits = s.split()[1:-1]
+        stack = []
+        stack.append(ret)
+        for i in range(len(splits)):
+            if splits[i] == "(":
+                stack[-1].append([])
+                stack.append(stack[-1][-1])
+            elif splits[i] == ")":
+                stack.pop(-1)
+            else:
+                stack[-1].append(splits[i])
+        ret = nested_lists_to_tree(ret)
+    except Exception as e:
+        ret = Node("badtree - " + str(np.random.randint(0, 100000)))
+    return ret
+     
 
 def nested_lists_to_tree(nls):
     topnode = _rec_build_tree_lambda(nls)
