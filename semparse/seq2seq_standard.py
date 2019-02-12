@@ -1,3 +1,4 @@
+# *
 import qelos as q
 import torch
 from functools import partial
@@ -190,10 +191,10 @@ def run_normal(lr=0.01,
     )
     att = phraseatt.model.BasicAttention()
     out = torch.nn.Sequential(
-        q.WordLinout(encdim+encdim, worddic=flD),
+        q.WordLinout(encdim, worddic=flD),
         # torch.nn.Softmax(-1)
     )
-    merge = q.rnn.FwdDecCellMerge(decdims[-1], encdims[-1])
+    merge = q.rnn.FwdDecCellMerge(decdims[-1], encdims[-1], outdim=encdim)
     deccell = q.rnn.DecoderCell(emb=decemb, core=dec_core,
                                att=att, out=out, merge=merge)
     train_dec = q.TFDecoder(deccell)
