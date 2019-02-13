@@ -249,5 +249,115 @@ def run_normal(lr=0.01,
     tt.msg("done")
 
 
+from semparse.rnn import *
+
+
+def run_gatedtree(lr=0.01,
+               gradclip=5.,
+               batsize=20,
+               epochs=80,
+               embdim=200,
+               encdim=200,
+               numlayer=1,
+               cuda=False,
+               gpu=0,
+               wreg=1e-8,
+               dropout=0.5,
+               smoothing=0.4,
+               goldsmoothing=-0.1,
+               which="geo",
+               relatt=False,
+               ):
+    tt = q.ticktock("script")
+    tt.msg("running gated tree decoder")
+    device = torch.device("cpu")
+    if cuda:
+        device = torch.device("cuda", gpu)
+
+    # region data
+    tt.tick("generating data")
+    # dss, D = gen_sort_data(seqlen=seqlen, numvoc=numvoc, numex=numex, prepend_inp=False)
+    dss, nlD, flD = gen_datasets(which=which)
+    tloader, vloader, xloader = [torch.utils.data.DataLoader(ds, batch_size=batsize, shuffle=True) for ds in dss]
+    seqlen = len(dss[0][0][1])
+    id2pushpop = torch.zeros(len(flD), dtype=torch.long, device=device)
+    id2pushpop[flD["("]] = +1
+    id2pushpop[flD[")"]] = -1
+
+    tt.tock("data generated")
+    # endregion
+
+    # region model
+    tt.tick("building model")
+    # source side
+    inpemb = q.WordEmb(embdim, worddic=nlD)
+    encdims = [encdim] * numlayer
+    encoder = q.LSTMEncoder(embdim, *encdims, bidir=False, dropout_in_shared=dropout)
+
+    # target side
+    decemb = q.WordEmb(embdim, worddic=flD)
+    decinpdim = embdim
+    decdims = [decinpdim] + [encdim] * numlayer
+    dec_core = \
+        [GatedTreeLSTMCell(decdims[i-1], decdims[i], dropout_in=dropout) for i in range(1, len(decdims))]        ###
+    dec_core = TreeRNNDecoderCellCore(*dec_core)
+    if relatt:
+        att = ComboAbsRelAttention(ctxdim=encdim, vecdim=encdim)
+    else:
+        att = BasicAttention()
+    out = torch.nn.Sequential(
+        q.WordLinout(encdim, worddic=flD),
+        # torch.nn.Softmax(-1)
+    )
+    merge = q.rnn.FwdDecCellMerge(decdims[-1], encdims[-1], outdim=encdim)
+    deccell = TreeRNNDecoderCell(emb=decemb, core=dec_core,
+                               att=att, out=out, merge=merge, id2pushpop=id2pushpop)
+    train_dec = q.TFDecoder(deccell)
+    test_dec = q.FreeDecoder(deccell, maxtime=seqlen+10)
+    train_encdec = EncDec(inpemb, encoder, train_dec)
+    test_encdec = Test_EncDec(inpemb, encoder, test_dec)
+
+    train_encdec.to(device)
+    test_encdec.to(device)
+    tt.tock("built model")
+    # endregion
+
+    # region training
+    # losses:
+    if smoothing == 0:
+        ce = q.loss.CELoss(mode="logits", ignore_index=0)
+    elif goldsmoothing < 0.:
+        ce = q.loss.SmoothedCELoss(mode="logits", ignore_index=0, smoothing=smoothing)
+    else:
+        ce = q.loss.DiffSmoothedCELoss(mode="logits", ignore_index=0, alpha=goldsmoothing, beta=smoothing)
+    acc = q.loss.SeqAccuracy(ignore_index=0)
+    elemacc = q.loss.SeqElemAccuracy(ignore_index=0)
+    treeacc = TreeAccuracyLambdaDFPar(flD=flD)
+    # optim
+    optim = torch.optim.RMSprop(train_encdec.parameters(), lr=lr, alpha=0.95, weight_decay=wreg)
+    clipgradnorm = lambda: torch.nn.utils.clip_grad_value_(train_encdec.parameters(), clip_value=gradclip)
+    # lööps
+    batchloop = partial(q.train_batch, on_before_optim_step=[clipgradnorm])
+    trainloop = partial(q.train_epoch, model=train_encdec, dataloader=tloader, optim=optim, device=device,
+                        losses=[q.LossWrapper(ce), q.LossWrapper(elemacc), q.LossWrapper(acc)],
+                        print_every_batch=False, _train_batch=batchloop)
+    validloop = partial(q.test_epoch, model=test_encdec, dataloader=vloader, device=device,
+                        losses=[q.LossWrapper(treeacc)],
+                        print_every_batch=False)
+
+    tt.tick("training")
+    q.run_training(trainloop, validloop, max_epochs=epochs)
+    tt.tock("trained")
+
+    tt.tick("testing")
+    test_results = validloop(model=test_encdec, dataloader=xloader)
+    print("Test results (freerunning): {}".format(test_results))
+    test_results = validloop(model=train_encdec, dataloader=xloader)
+    print("Test results (TF): {}".format(test_results))
+    tt.tock("tested")
+    # endregion
+    tt.msg("done")
+
+
 if __name__ == '__main__':
-    q.argprun(run_normal)
+    q.argprun(run_gatedtree)

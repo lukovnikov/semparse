@@ -329,6 +329,7 @@ class AbsRelAttention(torch.nn.Module):
             self.relvecs = self.veccomp(ctx)
 
         prevatts = self.prevattcomp(qry, ctx, ctx_mask=ctx_mask)
+        prevatts += (torch.log(ctx_mask.float()) if ctx_mask is not None else 0)
         prevatts = self.scorenorm(prevatts)
 
         # get non-negligible part of relvecs        # TODO: do sparse for more efficiency
