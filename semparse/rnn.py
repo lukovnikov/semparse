@@ -238,7 +238,7 @@ class SelfPointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaske
         mix = self.gate(x, mask=mask)      # (batsize, 3)
         out =   out_gen * mix[:, 0].unsqueeze(1) \
               + out_cpy * mix[:, 1].unsqueeze(1) \
-              + out_slf * mix[:, 2].unsqueeze(2)
+              + out_slf * mix[:, 2].unsqueeze(1)
 
         # region automasking
         if self.automasker is not None:
