@@ -11,11 +11,19 @@ class PointerGeneratorOutGate(torch.nn.Module):
         self.lin1 = torch.nn.Linear(inpdim, vecdim)
         self.act1 = torch.nn.Tanh()
         self.lin2 = torch.nn.Linear(vecdim, outdim)
-        self.act2 = torch.nn.Softmax(-1)
+        if self.outdim == 0:
+            self.act2 = torch.nn.Sigmoid()
+        else:
+            self.act2 = torch.nn.Softmax(-1)
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         r = self.act1(self.lin1(x))
-        o = self.act2(self.lin2(r))
+        o = self.lin2(r)
+        if mask is not None:
+            o = o + torch.log(mask)
+        o = self.act2(o)
+        if self.outdim == 0:
+            o = torch.cat([o, 1 - o], 1)
         return o
 
 
@@ -71,7 +79,8 @@ class PointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaskedOut
 
         # mix
         mix = self.gate(x)      # (batsize, 2)
-        out = out_gen * mix[:, 0].unsqueeze(1) + out_cpy * mix[:, 1].unsqueeze(1)
+        out =   out_gen * mix[:, 0].unsqueeze(1) \
+              + out_cpy * mix[:, 1].unsqueeze(1)
 
         # region automasking
         if self.automasker is not None:
@@ -212,16 +221,20 @@ class SelfPointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaske
         # endregion
 
         # region copying from previous output
-        selfalphas = torch.nn.functional.softmax(selfscores, -1)
-        out_slf = torch.zeros_like(out_gen)     # (batsize, outvocsize)
-        out_slf.scatter_add_(-1, self.prev_x_tokens, selfalphas)
+        if selfscores is not None:
+            selfalphas = torch.nn.functional.softmax(selfscores, -1)
+            out_slf = torch.zeros_like(out_gen)     # (batsize, outvocsize)
+            out_slf.scatter_add_(-1, self.prev_x_tokens, selfalphas)
         # endregion
 
         # mix
-        mix = self.gate(x)      # (batsize, 3)
+        mask = None
+        if selfscores is None:
+            mask = torch.tensor([1, 1, 0]).unsqueeze(0).repeat(x.size(0), 1)
+        mix = self.gate(x, mask=mask)      # (batsize, 3)
         out =   out_gen * mix[:, 0].unsqueeze(1) \
               + out_cpy * mix[:, 1].unsqueeze(1) \
-                + out_slf * mix[:, 2].unsqueeze(2)
+              + out_slf * mix[:, 2].unsqueeze(2)
 
         # region automasking
         if self.automasker is not None:

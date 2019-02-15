@@ -215,7 +215,7 @@ def run_normal(lr=0.001,
         selfatt = attention.FwdAttention(decdims[-1], decdims[-1], decdims[-1])
         deccell = SelfPointerGeneratorCell(emb=decemb, core=dec_core, att=att, selfatt=selfatt, out=out)
     else:
-        outgate = PointerGeneratorOutGate(decdims[-1] + encdim * 2, encdim)
+        outgate = PointerGeneratorOutGate(decdims[-1] + encdim * 2, encdim, 0)
         out = PointerGeneratorOut(out, sourcemap=sourcemap, gate=outgate)
         deccell = PointerGeneratorCell(emb=decemb, core=dec_core, att=att, out=out)
     train_dec = q.TFDecoder(deccell)
