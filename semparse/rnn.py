@@ -226,7 +226,7 @@ class SelfPointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaske
         if selfscores is not None:
             selfalphas = torch.nn.functional.softmax(selfscores, -1)
             out_slf = torch.zeros_like(out_gen)     # (batsize, outvocsize)
-            out_slf.scatter_add_(-1, self.prev_x_tokens, selfalphas)
+            out_slf.scatter_add_(-1, self.prev_x_tokens[:, :-1], selfalphas)
         else:
             out_slf = torch.zeros_like(out_gen)
         # endregion
