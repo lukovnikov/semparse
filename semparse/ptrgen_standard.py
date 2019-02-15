@@ -1,9 +1,10 @@
 import qelos as q
 import torch
 from functools import partial
-import phraseatt
 import numpy as np
 from semparse.rnn import *
+from semparse import attention
+import semparse.trees.parse as tparse
 
 
 class EncDec(torch.nn.Module):
@@ -73,6 +74,7 @@ def gen_datasets(which="geo"):
     with open(trainp) as tf, open(validp) as vf, open(testp) as xf:
         for line in tf:
             line_nl, line_fl = line.strip().split("\t")
+            line_fl = line_fl.replace("' ", "")
             # line_nl = " ".join(line_nl.split(" ")[::-1])
             nlsm.add(line_nl)
             flsm.add(line_fl)
@@ -80,6 +82,7 @@ def gen_datasets(which="geo"):
         devstart = i
         for line in vf:
             line_nl, line_fl = line.strip().split("\t")
+            line_fl = line_fl.replace("' ", "")
             # line_nl = " ".join(line_nl.split(" ")[::-1])
             nlsm.add(line_nl)
             flsm.add(line_fl)
@@ -87,6 +90,7 @@ def gen_datasets(which="geo"):
         teststart = i
         for line in xf:
             line_nl, line_fl = line.strip().split("\t")
+            line_fl = line_fl.replace("' ", "")
             # line_nl = " ".join(line_nl.split(" ")[::-1])
             nlsm.add(line_nl)
             flsm.add(line_fl)
@@ -104,20 +108,65 @@ def gen_datasets(which="geo"):
     return (tds, vds, xds), nlsm.D, flsm.D
 
 
+class TreeAccuracyPrologPar(torch.nn.Module):
+    def __init__(self, flD, reduction="mean", **kw):
+        super(TreeAccuracyPrologPar, self).__init__(**kw)
+        self.flD = flD
+        self.rflD = {v: k for k, v in flD.items()}
+        self.parsef = tparse.parse_prolog
+        self.masktoken = "<MASK>"
+        self.reduction = reduction
+
+    def forward(self, probs, gold):     # probs: (batsize, seqlen, outvocsize)
+        # build gold trees
+        def parsetree(row):
+            row = row.cpu().numpy()
+            tree = ["_answer"] + [self.rflD[x] for x in row if self.rflD[x] != self.masktoken]
+            numunmatched = tree.count("(") - tree.count(")")
+            tree += [")"] * max(0, numunmatched)     # too few --> add some
+            if numunmatched < 0:        # too many --> stop where zero depth is reached
+                depth = 0
+                for i in range(len(tree)):
+                    if tree[i] == "(":
+                        depth += 1
+                    elif tree[i] == ")":
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    else: pass
+                tree = tree[:i+1]
+            tree = self.parsef(" ".join(tree))
+            return tree
+        predseq = torch.argmax(probs, 2)
+        predtrees = [parsetree(prow) for prow in predseq]
+        goldtrees = [parsetree(grow) for grow in gold]
+        same = [float(x == y) for x, y in zip(goldtrees, predtrees)]
+        same = torch.tensor(same)
+
+        if self.reduction in ["mean", "elementwise_mean"]:
+            samesum = same.sum() / same.size(0)
+        elif self.reduction == "sum":
+            samesum = same.sum()
+        else:
+            samesum = same
+        return samesum
+
+
 def run_normal(lr=0.001,
-        gradnorm=1.,
-        batsize=20,
-        epochs=70,
-        embdim=50,
-        encdim=100,
-        numlayer=1,
-        cuda=False,
-        gpu=0,
-        wreg=1e-8,
-        dropout=0.5,
-        smoothing=0.,
-        goldsmoothing=-0.1,
-        which="geo"):
+               gradnorm=1.,
+               batsize=20,
+               epochs=150,
+               embdim=100,
+               encdim=200,
+               numlayer=1,
+               cuda=False,
+               gpu=0,
+               wreg=1e-8,
+               dropout=0.5,
+               smoothing=0.,
+               goldsmoothing=-0.1,
+               selfptr=False,
+               which="geo"):
     tt = q.ticktock("script")
     tt.msg("running normal att")
     device = torch.device("cpu")
@@ -155,15 +204,20 @@ def run_normal(lr=0.001,
     dec_core = torch.nn.Sequential(
         *[q.rnn.LSTMCell(decdims[i-1], decdims[i], dropout_in=dropout) for i in range(1, len(decdims))]
     )
-    att = phraseatt.model.FwdAttention(decdims[-1], encdim * 2, decdims[-1])
+    att = attention.FwdAttention(decdims[-1], encdim * 2, decdims[-1])
     out = torch.nn.Sequential(
         q.WordLinout(decdims[-1]+encdim*2, worddic=flD),
         # torch.nn.Softmax(-1)
     )
-    outgate = PointerGeneratorOutGate(decdims[-1] + encdim * 2, encdim)
-    out = PointerGeneratorOut(out, sourcemap=sourcemap, gate=outgate)
-    deccell = PointerGeneratorCell(emb=decemb, core=dec_core,
-                               att=att, out=out)
+    if selfptr:
+        outgate = PointerGeneratorOutGate(decdims[-1] + encdim * 2, encdim, 3)
+        out = SelfPointerGeneratorOut(out, sourcemap=sourcemap, gate=outgate)
+        selfatt = attention.FwdAttention(decdims[-1], decdims[-1], decdims[-1])
+        deccell = SelfPointerGeneratorCell(emb=decemb, core=dec_core, att=att, selfatt=selfatt, out=out)
+    else:
+        outgate = PointerGeneratorOutGate(decdims[-1] + encdim * 2, encdim)
+        out = PointerGeneratorOut(out, sourcemap=sourcemap, gate=outgate)
+        deccell = PointerGeneratorCell(emb=decemb, core=dec_core, att=att, out=out)
     train_dec = q.TFDecoder(deccell)
     test_dec = q.FreeDecoder(deccell, maxtime=seqlen+10)
     train_encdec = EncDec(inpemb, encoder, train_dec)
@@ -184,16 +238,17 @@ def run_normal(lr=0.001,
         ce = q.loss.DiffSmoothedCELoss(mode="probs", ignore_index=0, alpha=goldsmoothing, beta=smoothing)
     acc = q.loss.SeqAccuracy(ignore_index=0)
     elemacc = q.loss.SeqElemAccuracy(ignore_index=0)
+    treeacc = TreeAccuracyPrologPar(flD=flD)
     # optim
     optim = torch.optim.Adam(train_encdec.parameters(), lr=lr, weight_decay=wreg)
-    clipgradnorm = lambda: torch.nn.utils.clip_grad_norm(train_encdec.parameters(), max_norm=gradnorm)
+    clipgradnorm = lambda: torch.nn.utils.clip_grad_norm_(train_encdec.parameters(), max_norm=gradnorm)
     # lööps
     batchloop = partial(q.train_batch, on_before_optim_step=[clipgradnorm])
     trainloop = partial(q.train_epoch, model=train_encdec, dataloader=tloader, optim=optim, device=device,
-                        losses=[q.LossWrapper(ce), q.LossWrapper(acc), q.LossWrapper(elemacc)],
+                        losses=[q.LossWrapper(ce), q.LossWrapper(elemacc), q.LossWrapper(acc)],
                         print_every_batch=False, _train_batch=batchloop)
-    validloop = partial(q.test_epoch, model=train_encdec, dataloader=vloader, device=device,
-                        losses=[q.LossWrapper(ce), q.LossWrapper(acc), q.LossWrapper(elemacc)],
+    validloop = partial(q.test_epoch, model=test_encdec, dataloader=vloader, device=device,
+                        losses=[q.LossWrapper(treeacc)],
                         print_every_batch=False)
 
     tt.tick("training")

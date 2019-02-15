@@ -154,6 +154,177 @@ class PointerGeneratorCell(torch.nn.Module):        # from q.rnn.LuongCell
 # endregion
 
 
+# region self-pointing pointer-generator (two pointers, one generator)
+class SelfPointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaskedOut
+    """
+    Performs the generation of tokens or copying of input.
+
+    """
+    def __init__(self, genout=None, sourcemap=None,
+                 gate:PointerGeneratorOutGate=None,
+                 automasker:q.rnn.AutoMasker=None, **kw):
+        super(SelfPointerGeneratorOut, self).__init__(**kw)
+        self.genout = genout
+        self.sourcemap = sourcemap      # maps from input ids to output ids (all input ids must be part of output dict). must be 1D long tensor containing output dict ids
+        self.automasker = automasker    # automasker for masking out invalid tokens
+        self.gate = gate                # module that takes in the vector and outputs scores of how to mix the gen and cpy distributions
+        self._ctx_ids = None     # must be set in every batch, before decoding, contains mapped input sequence ids
+        self.prev_x_tokens = None
+
+    @property
+    def ctx_ids(self):
+        return self._ctx_ids
+
+    @ctx_ids.setter
+    def ctx_ids(self, value):
+        self._ctx_ids = self.sourcemap[value]       # already maps to output dict when setting ctx_ids
+
+    def batch_reset(self):
+        self._ctx_ids = None
+        self.prev_x_tokens = None
+
+    def update(self, x):        # from automasker
+        if self.automasker is not None:
+            self.automasker.update(x)
+        if self.prev_x_tokens is None:
+            self.prev_x_tokens = x.unsqueeze(1)       # introduce sequence dimension
+        else:
+            self.prev_x_tokens = torch.cat([self.prev_x_tokens, x.unsqueeze(1)], 1)
+
+    def forward(self, x, scores=None, selfscores=None):
+        """
+        :param x:       vector for generation
+        :param scores:  attention scores (unnormalized)     (batsize, seqlen)
+        :return:        probabilities over output tokens
+        """
+        assert(self._ctx_ids is not None)
+
+        out_gen = self.genout(x)        # output scores from generator      (batsize, outvocsize)
+        out_gen = torch.nn.functional.softmax(out_gen, -1)
+
+        # region copying from input
+        alphas = torch.nn.functional.softmax(scores, -1)
+        out_cpy = torch.zeros_like(out_gen)     # (batsize, outvocsize)
+        ctx_ids = self._ctx_ids
+        if alphas.size(1) < ctx_ids.size(1):
+            ctx_ids = ctx_ids[:, :alphas.size(1)]
+        out_cpy.scatter_add_(-1, ctx_ids, alphas)
+        # endregion
+
+        # region copying from previous output
+        selfalphas = torch.nn.functional.softmax(selfscores, -1)
+        out_slf = torch.zeros_like(out_gen)     # (batsize, outvocsize)
+        out_slf.scatter_add_(-1, self.prev_x_tokens, selfalphas)
+        # endregion
+
+        # mix
+        mix = self.gate(x)      # (batsize, 3)
+        out =   out_gen * mix[:, 0].unsqueeze(1) \
+              + out_cpy * mix[:, 1].unsqueeze(1) \
+                + out_slf * mix[:, 2].unsqueeze(2)
+
+        # region automasking
+        if self.automasker is not None:
+            mask = self.automasker.get_out_mask().to(out.device).float()  # 0/1 mask
+            out += torch.log(mask)
+        # endregion
+
+        return out
+
+
+class SelfPointerGeneratorCell(torch.nn.Module):        # from q.rnn.LuongCell
+    def __init__(self, emb=None, core=None, att=None, selfatt=None, merge:q.rnn.DecCellMerge=q.rnn.ConcatDecCellMerge(),
+                 out:SelfPointerGeneratorOut=None, feed_att=False, return_alphas=False, return_scores=False, return_other=False,
+                 dropout=0, **kw):
+        """
+
+        :param emb:
+        :param core:
+        :param att:
+        :param selfatt:
+        :param merge:
+        :param out:         if None, out_vec (after merge) is returned
+        :param feed_att:
+        :param h_hat_0:
+        :param kw:
+        """
+        super(SelfPointerGeneratorCell, self).__init__(**kw)
+        self.emb, self.core, self.att, self.merge, self.out = emb, core, att, merge, out
+        self.selfatt = selfatt
+        self.feed_att = feed_att
+        self._outvec_tm1 = None    # previous attention summary
+        self.outvec_t0 = None
+        self.return_alphas = return_alphas
+        self.return_scores = return_scores
+        self.return_other = return_other
+        self.dropout = torch.nn.Dropout(dropout)
+        self.prev_coreouts = None   # previous states of decoder that have been used as queries
+
+    def batch_reset(self):
+        self.outvec_t0 = None
+        self._outvec_tm1 = None
+        self.prev_coreouts = None   # previous states of decoder that have been used as queries
+
+    def forward(self, x_t, ctx=None, ctx_mask=None, **kw):
+        assert (ctx is not None)
+
+        # if isinstance(self.out, q.rnn.AutoMaskedOut):
+        #     self.out.update(x_t)
+        self.out.update(x_t)
+
+        embs = self.emb(x_t)        # embed input tokens
+        if q.issequence(embs) and len(embs) == 2:   # unpack if necessary
+            embs, mask = embs
+
+        if self.feed_att:
+            if self._outvec_tm1 is None:
+                assert (self.outvec_t0 is not None)   #"h_hat_0 must be set when feed_att=True"
+                self._outvec_tm1 = self.outvec_t0
+            core_inp = torch.cat([embs, self._outvec_tm1], 1)     # append previous attention summary
+        else:
+            core_inp = embs
+
+        core_out = self.core(core_inp)  # feed through rnn
+
+        # do normal attention over input
+        alphas, summaries, scores = self.att(core_out, ctx, ctx_mask=ctx_mask, values=ctx)  # do attention
+
+        # do self-attention
+        if self.prev_coreouts is not None:
+            selfalphas, selfsummaries, selfscores = self.selfatt(core_out, self.prev_coreouts)  # do self-attention
+        else:
+            selfalphas, selfsummaries, selfscores = None, None, None
+        # TODO ??? use self-attention summaries for output generation too?
+
+        out_vec = self.merge(core_out, summaries, core_inp)
+        out_vec = self.dropout(out_vec)
+        self._outvec_tm1 = out_vec      # store outvec (this is how Luong, 2015 does it)
+
+        # save coreouts
+        if self.prev_coreouts is None:
+            self.prev_coreouts = core_out.unsqueeze(1)      # introduce a sequence dimension
+        else:
+            self.prev_coreouts = torch.cat([self.prev_coreouts, core_out.unsqueeze(1)], 1)
+
+        ret = tuple()
+        if self.out is None:
+            ret += (out_vec,)
+        else:
+            _out_vec = self.out(out_vec, scores=scores, selfscores=selfscores)
+            ret += (_out_vec,)
+
+        # other returns
+        if self.return_alphas:
+            ret += (alphas,)
+        if self.return_scores:
+            ret += (scores,)
+        if self.return_other:
+            ret += (embs, core_out, summaries)
+        return ret[0] if len(ret) == 1 else ret
+
+# endregion
+
+
 # region tree decoders
 def parent_merge_parent_first(parent_alphas, alphas):
     _z = torch.min(torch.tensor(1.0).to(alphas.device), (1 - parent_alphas) / alphas)

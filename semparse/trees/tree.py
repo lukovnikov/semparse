@@ -136,6 +136,9 @@ class Node(object):
         ret = "\n".join(lines)
         return ret
 
+    def __repr__(self):
+        return self.pptree()
+
 
 # DON'T USE BELOW
 class ONode(object):

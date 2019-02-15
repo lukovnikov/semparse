@@ -27,7 +27,40 @@ def parse_lambda_depth_first_parentheses(s):
     except Exception as e:
         ret = Node("badtree - " + str(np.random.randint(0, 100000)))
     return ret
-     
+
+
+def parse_prolog(s):
+    """ Example input:
+        _answer ( A , _largest ( A , ( _city ( A ) , _loc ( A , B ) , _const ( B , _stateid ( kansas ) ) ) ) )
+    """
+    try:
+        ret = []
+        splits = s.split()
+        stack = []
+        stack.append(ret)
+        for i in range(len(splits)):
+            if splits[i] == "(":
+                parentname = stack[-1].pop(-1)
+                stack[-1].append([parentname])
+                stack.append(stack[-1][-1])
+            elif splits[i] == ")":
+                if stack[-1][0] == ",":
+                    stack[-1][0] = "and"
+                j = 0
+                while j < len(stack[-1]):
+                    if stack[-1][j] == ",":
+                        stack[-1].pop(j)
+                        j -= 1
+                    j += 1
+                stack.pop(-1)
+            else:
+                stack[-1].append(splits[i])
+        ret = ret[0]
+        ret = nested_lists_to_tree(ret)
+    except Exception as e:
+        ret = Node("badtree - " + str(np.random.randint(0, 100000)))
+    return ret
+
 
 def nested_lists_to_tree(nls):
     topnode = _rec_build_tree_lambda(nls)
@@ -85,8 +118,12 @@ if __name__ == '__main__':
     r = parse_lambda_depth_first_parentheses("( lambda $0 e ( exists $1 ( and ( flight $0 ) ( flight $1 ) ( during_day $1 late_evening:pd ) ( during_day $0 early:pd ) ( during_day $0 morning:pd ) ( from $0 ci0 ) ( to $0 ci1 ) ( to $1 ci0 ) ( from $1 ci1 ) ) ) )")
     print(r)
     print(r.pptree())
-    rbf = "lambda $$ $$ $$ <END> $0 <END> e <END> exists $$ $$ <END> $1 <END> and $$ $$ $$ $$ $$ $$ $$ $$ $$ <END> flight $$ <END> flight $$ <END> during_day $$ $$ <END> during_day $$ $$ <END> during_day $$ $$ <END> from $$ $$ <END> to $$ $$ <END> to $$ $$ <END> from $$ $$ <END> $0 <END> $1 <END> $1 <END> late_evening:pd <END> $0 <END> early:pd <END> $0 <END> morning:pd <END> $0 <END> ci0 <END> $0 <END> ci1 <END> $1 <END> ci0 <END> $1 <END> ci1 <END>"
-    r2 = parse_lambda_breadth_first(rbf)
-    print(r2.pptree())
-    assert(r2 == r)
-    print("SAME")
+
+    r = parse_prolog("_answer ( A , _largest ( A , ( _city ( A ) , _loc ( A , B ) , _const ( B , _stateid ( kansas ) ) ) ) )")
+    print(r.pptree())
+
+    # rbf = "lambda $$ $$ $$ <END> $0 <END> e <END> exists $$ $$ <END> $1 <END> and $$ $$ $$ $$ $$ $$ $$ $$ $$ <END> flight $$ <END> flight $$ <END> during_day $$ $$ <END> during_day $$ $$ <END> during_day $$ $$ <END> from $$ $$ <END> to $$ $$ <END> to $$ $$ <END> from $$ $$ <END> $0 <END> $1 <END> $1 <END> late_evening:pd <END> $0 <END> early:pd <END> $0 <END> morning:pd <END> $0 <END> ci0 <END> $0 <END> ci1 <END> $1 <END> ci0 <END> $1 <END> ci1 <END>"
+    # r2 = parse_lambda_breadth_first(rbf)
+    # print(r2.pptree())
+    # assert(r2 == r)
+    # print("SAME")
