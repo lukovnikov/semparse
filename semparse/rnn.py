@@ -22,7 +22,7 @@ class PointerGeneratorOutGate(torch.nn.Module):
         r = self.act1(self.lin1(x))
         o = self.lin2(r)
         if mask is not None:
-            o = o + torch.log(mask)
+            o = o + torch.log(mask.float())
         o = self.act2(o)
         if self.outdim == 0:
             o = torch.cat([o, 1 - o], 1)
