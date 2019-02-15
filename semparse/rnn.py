@@ -8,6 +8,8 @@ class PointerGeneratorOutGate(torch.nn.Module):
     def __init__(self, inpdim, vecdim, outdim=2, **kw):
         super(PointerGeneratorOutGate, self).__init__(**kw)
         self.inpdim, self.vecdim, self.outdim = inpdim, vecdim, outdim
+        if vecdim == 0:
+            vecdim = 1
         self.lin1 = torch.nn.Linear(inpdim, vecdim)
         self.act1 = torch.nn.Tanh()
         self.lin2 = torch.nn.Linear(vecdim, outdim)
