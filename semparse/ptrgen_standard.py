@@ -153,7 +153,7 @@ class TreeAccuracyPrologPar(torch.nn.Module):
 
 
 def run_normal(lr=0.001,
-               gradnorm=1.,
+               gradclip=5.,
                batsize=20,
                epochs=150,
                embdim=100,
@@ -241,7 +241,7 @@ def run_normal(lr=0.001,
     treeacc = TreeAccuracyPrologPar(flD=flD)
     # optim
     optim = torch.optim.Adam(train_encdec.parameters(), lr=lr, weight_decay=wreg)
-    clipgradnorm = lambda: torch.nn.utils.clip_grad_norm_(train_encdec.parameters(), max_norm=gradnorm)
+    clipgradnorm = lambda: torch.nn.utils.clip_grad_value_(train_encdec.parameters(), clip_value=gradclip)
     # lööps
     batchloop = partial(q.train_batch, on_before_optim_step=[clipgradnorm])
     trainloop = partial(q.train_epoch, model=train_encdec, dataloader=tloader, optim=optim, device=device,
