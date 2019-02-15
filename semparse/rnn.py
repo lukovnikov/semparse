@@ -232,7 +232,7 @@ class SelfPointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaske
         # mix
         mask = None
         if selfscores is None:
-            mask = torch.tensor([1, 1, 0]).unsqueeze(0).repeat(x.size(0), 1)
+            mask = torch.tensor([1, 1, 0]).unsqueeze(0).repeat(x.size(0), 1).to(x.device)
         mix = self.gate(x, mask=mask)      # (batsize, 3)
         out =   out_gen * mix[:, 0].unsqueeze(1) \
               + out_cpy * mix[:, 1].unsqueeze(1) \
