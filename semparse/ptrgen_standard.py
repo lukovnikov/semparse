@@ -6,6 +6,11 @@ from semparse.rnn import *
 from semparse import attention
 import semparse.trees.parse as tparse
 
+# import spacy
+# nlp = spacy.load("C:\Users\Denis\Miniconda3\envs\torch\lib\site-packages\en_core_web_sm")
+# doc = nlp("what is the capital of states that have cities named durham ?")
+# print(doc)
+
 
 class EncDec(torch.nn.Module):
     def __init__(self, inpemb, enc, dec, **kw):
@@ -71,6 +76,9 @@ def gen_datasets(which="geo"):
     flsm = q.StringMatrix(indicate_start_end=True if which == "jobs" else False)
     flsm.tokenize = lambda x: x.split()
     devstart, teststart, i = 0, 0, 0
+    trainwords = set()
+    trainwordcounts = {}
+    testwords = set()
     with open(trainp) as tf, open(validp) as vf, open(testp) as xf:
         for line in tf:
             line_nl, line_fl = line.strip().split("\t")
@@ -78,6 +86,11 @@ def gen_datasets(which="geo"):
             # line_nl = " ".join(line_nl.split(" ")[::-1])
             nlsm.add(line_nl)
             flsm.add(line_fl)
+            trainwords |= set(line_nl.split())
+            for word in set(line_nl.split()):
+                if word not in trainwordcounts:
+                    trainwordcounts[word] = 0
+                trainwordcounts[word] += 1
             i += 1
         devstart = i
         for line in vf:
@@ -94,9 +107,22 @@ def gen_datasets(which="geo"):
             # line_nl = " ".join(line_nl.split(" ")[::-1])
             nlsm.add(line_nl)
             flsm.add(line_fl)
+            testwords |= set(line_nl.split())
             i += 1
     nlsm.finalize()
     flsm.finalize()
+
+    print("{} unique words in train, {} unique words in test, {} in test but not in train"
+          .format(len(trainwords), len(testwords), len(testwords - trainwords)))
+    print(testwords - trainwords)
+    trainwords_once = set([k for k, v in trainwordcounts.items() if v < 2])
+    print("{} unique words in train that occur only once ({} of them is in test)".format(len(trainwords_once), len(trainwords_once & testwords)))
+    print(trainwords_once)
+    trainwords_twice = set([k for k, v in trainwordcounts.items() if v < 3])
+    print("{} unique words in train that occur only twice ({} of them is in test)".format(len(trainwords_twice), len(trainwords_twice & testwords)))
+    rarerep = trainwords_once | (testwords - trainwords)
+    print("{} unique rare representation words".format(len(rarerep)))
+    print(rarerep)
 
     nlmat = torch.tensor(nlsm.matrix).long()
     flmat = torch.tensor(flsm.matrix).long()
