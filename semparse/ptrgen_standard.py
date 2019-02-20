@@ -79,6 +79,9 @@ def gen_datasets(which="geo"):
     trainwords = set()
     trainwordcounts = {}
     testwords = set()
+    trainwords_fl = set()
+    trainwordcounts_fl = {}
+    testwords_fl = set()
     with open(trainp) as tf, open(validp) as vf, open(testp) as xf:
         for line in tf:
             line_nl, line_fl = line.strip().split("\t")
@@ -91,6 +94,11 @@ def gen_datasets(which="geo"):
                 if word not in trainwordcounts:
                     trainwordcounts[word] = 0
                 trainwordcounts[word] += 1
+            trainwords_fl |= set(line_fl.split())
+            for word in set(line_fl.split()):
+                if word not in trainwordcounts_fl:
+                    trainwordcounts_fl[word] = 0
+                trainwordcounts_fl[word] += 1
             i += 1
         devstart = i
         for line in vf:
@@ -108,6 +116,7 @@ def gen_datasets(which="geo"):
             nlsm.add(line_nl)
             flsm.add(line_fl)
             testwords |= set(line_nl.split())
+            testwords_fl |= set(line_fl.split())
             i += 1
     nlsm.finalize()
     flsm.finalize()
@@ -124,6 +133,11 @@ def gen_datasets(which="geo"):
     print("{} unique rare representation words".format(len(rarerep)))
     print(rarerep)
 
+    trainwords_fl_once = set([k for k, v in trainwordcounts_fl.items() if v < 2])
+    rarerep_fl = trainwords_fl_once | (testwords_fl - trainwords_fl)
+    print("{} unique rare rep words in logical forms".format(len(rarerep_fl)))
+    print(rarerep_fl)
+
     nlmat = torch.tensor(nlsm.matrix).long()
     flmat = torch.tensor(flsm.matrix).long()
     gold = torch.tensor(flsm.matrix[:, 1:]).long()
@@ -131,7 +145,7 @@ def gen_datasets(which="geo"):
     tds = torch.utils.data.TensorDataset(nlmat[:devstart], flmat[:devstart], gold[:devstart])
     vds = torch.utils.data.TensorDataset(nlmat[devstart:teststart], flmat[devstart:teststart], gold[devstart:teststart])
     xds = torch.utils.data.TensorDataset(nlmat[teststart:], flmat[teststart:], gold[teststart:])
-    return (tds, vds, xds), nlsm.D, flsm.D
+    return (tds, vds, xds), nlsm.D, flsm.D, rarerep, rarerep_fl
 
 
 class TreeAccuracyPrologPar(torch.nn.Module):
@@ -202,7 +216,7 @@ def run_normal(lr=0.001,
     # region data
     tt.tick("generating data")
     # dss, D = gen_sort_data(seqlen=seqlen, numvoc=numvoc, numex=numex, prepend_inp=False)
-    dss, nlD, flD = gen_datasets(which=which)
+    dss, nlD, flD, rare_nl, rare_fl = gen_datasets(which=which)
     tloader, vloader, xloader = [torch.utils.data.DataLoader(ds, batch_size=batsize, shuffle=True) for ds in dss]
     seqlen = len(dss[0][0][1])
     # merge nlD into flD and make mapper
@@ -219,12 +233,12 @@ def run_normal(lr=0.001,
     # region model
     tt.tick("building model")
     # source side
-    inpemb = q.WordEmb(embdim, worddic=nlD)
+    inpemb = q.UnkReplWordEmb(embdim, worddic=nlD, unk_tokens=rare_nl)
     encdims = [encdim] * numlayer
     encoder = q.LSTMEncoder(embdim, *encdims, bidir=True, dropout_in_shared=dropout)
 
     # target side
-    decemb = q.WordEmb(embdim, worddic=flD)
+    decemb = q.UnkReplWordEmb(embdim, worddic=flD, unk_tokens=rare_fl)
     decinpdim = embdim
     decdims = [decinpdim] + [encdim] * numlayer
     dec_core = torch.nn.Sequential(
@@ -232,7 +246,7 @@ def run_normal(lr=0.001,
     )
     att = attention.FwdAttention(decdims[-1], encdim * 2, decdims[-1])
     out = torch.nn.Sequential(
-        q.WordLinout(decdims[-1]+encdim*2, worddic=flD),
+        q.UnkReplWordLinout(decdims[-1]+encdim*2, worddic=flD, unk_tokens=rare_fl),
         # torch.nn.Softmax(-1)
     )
     if selfptr:
