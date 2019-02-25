@@ -307,14 +307,15 @@ def run_span_io(lr=DEFAULT_LR,
 def run_span_borders(lr=DEFAULT_LR,
                 dropout=.5,
                 wreg=0.01,
-                initwreg=0.01,
+                initwreg=0.0,
                 batsize=DEFAULT_BATSIZE,
                 epochs=DEFAULT_EPOCHS,
-                smoothing=0.4,
+                smoothing=0.,
                 cuda=False,
                 gpu=0,
                 balanced=False,
                 ):
+    print(locals())
     if cuda:
         device = torch.device("cuda", gpu)
     else:
