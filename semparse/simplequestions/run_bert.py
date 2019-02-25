@@ -189,10 +189,12 @@ def test_io_span_detector():
 
 def run_span_io(lr=0.001,
                 dropout=.3,
+                wreg=0.000000001,
                 batsize=10,
-                epochs=10,
+                epochs=20,
                 cuda=False,
-                gpu=0
+                gpu=0,
+                balanced=False,
                 ):
     if cuda:
         device = torch.device("cuda", gpu)
@@ -209,6 +211,14 @@ def run_span_io(lr=0.001,
     trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
     devloader = DataLoader(devds, batch_size=batsize, shuffle=False)
     testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
+    # compute balancing hyperparam for BCELoss
+    trainios = trainds.tensors[1]
+    numberpos = (trainios == 2).float().sum().item()
+    numberneg = (trainios == 1).float().sum().item()
+    if balanced:
+        pos_weight = numberneg/numberpos
+    else:
+        pos_weight = None
     # endregion
 
     # region model
@@ -220,8 +230,8 @@ def run_span_io(lr=0.001,
     # endregion
 
     # region training
-    optim = BertAdam(spandet.parameters(), lr=lr)
-    losses = [AutomaskedBCELoss(), AutomaskedBinarySeqAccuracy()]
+    optim = BertAdam(spandet.parameters(), lr=lr, weight_decay=wreg)
+    losses = [AutomaskedBCELoss(pos_weight=pos_weight), AutomaskedBinarySeqAccuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
     devlosses = [q.LossWrapper(l) for l in losses]
     testlosses = [q.LossWrapper(l) for l in losses]
@@ -230,7 +240,7 @@ def run_span_io(lr=0.001,
     testloop = partial(q.test_epoch, model=spandet, dataloader=testloader, losses=testlosses, device=device)
 
     tt.tick("training")
-    q.run_training(trainloop, devloop)
+    q.run_training(trainloop, devloop, max_epochs=epochs)
     tt.tock("done training")
     # endregion
 
