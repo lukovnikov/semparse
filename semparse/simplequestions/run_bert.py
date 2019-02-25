@@ -44,11 +44,11 @@ def load_data(p="../../data/buboqa/data/bertified_dataset.npz",
         print(tabulate([range(len(tokrow)), tokrow, iorow]))
         print(ioborderrow)
         print(revrelD[rel_i])
-    tt.tick("printing some examples")
-    for k in range(10):
-        print("\nExample {}".format(k))
-        pp(k)
-    tt.tock("printed some examples")
+    # tt.tick("printing some examples")
+    # for k in range(10):
+    #     print("\nExample {}".format(k))
+    #     pp(k)
+    # tt.tock("printed some examples")
 
     # datasets
     tt.tick("making datasets")
@@ -159,12 +159,14 @@ class AutomaskedBinarySeqAccuracy(torch.nn.Module):
 
 
 class IOSpanDetector(torch.nn.Module):
-    def __init__(self, bert, dropout=0., **kw):
+    def __init__(self, bert, dropout=0., extra=False, **kw):
         super(IOSpanDetector, self).__init__(**kw)
         self.bert = bert
         dim = self.bert.config.hidden_size
-        # self.lin = torch.nn.Linear(dim, dim)
-        # self.act = torch.nn.Tanh()
+        if extra:
+            self.lin = torch.nn.Linear(dim, dim)
+            self.act = torch.nn.Tanh()
+        self.extra = extra
         self.linout = torch.nn.Linear(dim, 1)
         self.dropout = torch.nn.Dropout(p=dropout)
         # self.actout = torch.nn.Sigmoid()
@@ -173,7 +175,8 @@ class IOSpanDetector(torch.nn.Module):
         mask = (x != 0).long()
         a, _ = self.bert(x.long(), attention_mask=mask, output_all_encoded_layers=False)
         a = self.dropout(a)
-        # a = self.act(self.lin(a))
+        if self.extra:
+            a = self.act(self.lin(a))
         logits = self.linout(a).squeeze(-1)
         return logits
 
@@ -188,13 +191,16 @@ def test_io_span_detector():
 
 
 class BorderSpanDetector(torch.nn.Module):
-    def __init__(self, bert, dropout=0., **kw):
+    def __init__(self, bert, dropout=0., extra=False, **kw):
         super(BorderSpanDetector, self).__init__(**kw)
         self.bert = bert
         dim = self.bert.config.hidden_size
-        self.lin = torch.nn.Linear(dim, dim)
-        self.act = torch.nn.Tanh()
-        self.linout = torch.nn.Linear(dim, 1)
+        if extra:
+            self.lin = torch.nn.Linear(dim, dim)
+            self.act = torch.nn.Tanh()
+        self.extra = extra
+        self.linstart = torch.nn.Linear(dim, 1)
+        self.linend = torch.nn.Linear(dim, 1)
         self.dropout = torch.nn.Dropout(p=dropout)
         # self.actout = torch.nn.Sigmoid()
 
@@ -202,8 +208,11 @@ class BorderSpanDetector(torch.nn.Module):
         mask = (x != 0).long()
         a, _ = self.bert(x.long(), attention_mask=mask, output_all_encoded_layers=False)
         a = self.dropout(a)
-        b = self.act(self.lin(a))
-        logits = self.linout(b).squeeze(-1)
+        if self.extra:
+            a = self.act(self.lin(a))
+        logits_start = self.linstart(a)
+        logits_end = self.linend(a)
+        logits = torch.cat([logits_start.transpose(1, 2), logits_end.transpose(1, 2)], 2)
         return logits
 
 
@@ -252,6 +261,56 @@ def run_span_io(lr=0.0001,
     # region training
     optim = BertAdam(spandet.parameters(), lr=lr, weight_decay=wreg)
     losses = [AutomaskedBCELoss(pos_weight=pos_weight), AutomaskedBinarySeqAccuracy()]
+    trainlosses = [q.LossWrapper(l) for l in losses]
+    devlosses = [q.LossWrapper(l) for l in losses]
+    testlosses = [q.LossWrapper(l) for l in losses]
+    trainloop = partial(q.train_epoch, model=spandet, dataloader=trainloader, optim=optim, losses=trainlosses, device=device)
+    devloop = partial(q.test_epoch, model=spandet, dataloader=devloader, losses=devlosses, device=device)
+    testloop = partial(q.test_epoch, model=spandet, dataloader=testloader, losses=testlosses, device=device)
+
+    tt.tick("training")
+    q.run_training(trainloop, devloop, max_epochs=epochs)
+    tt.tock("done training")
+    # endregion
+
+
+def run_span_borders(lr=0.0001,
+                dropout=.5,
+                wreg=0.01,
+                batsize=10,
+                epochs=20,
+                cuda=False,
+                gpu=0,
+                balanced=False,
+                ):
+    if cuda:
+        device = torch.device("cuda", gpu)
+    else:
+        device = torch.device("cpu")
+    # region data
+    tt = q.ticktock("script")
+    tt.msg("running span io with BERT")
+    tt.tick("loading data")
+    data = load_data(which="span/borders")
+    trainds, devds, testds = data
+    tt.tock("data loaded")
+    tt.msg("Train/Dev/Test sizes: {} {} {}".format(len(trainds), len(devds), len(testds)))
+    trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
+    devloader = DataLoader(devds, batch_size=batsize, shuffle=False)
+    testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
+    # endregion
+
+    # region model
+    tt.tick("loading BERT")
+    bert = BertModel.from_pretrained("bert-base-uncased")
+    spandet = IOSpanDetector(bert, dropout=dropout)
+    spandet.to(device)
+    tt.tock("loaded BERT")
+    # endregion
+
+    # region training
+    optim = BertAdam(spandet.parameters(), lr=lr, weight_decay=wreg)
+    losses = [q.CELoss(), q.SeqAccuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
     devlosses = [q.LossWrapper(l) for l in losses]
     testlosses = [q.LossWrapper(l) for l in losses]
