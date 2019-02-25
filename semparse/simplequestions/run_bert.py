@@ -10,6 +10,9 @@ from functools import partial
 DEFAULT_LR=0.0001
 DEFAULT_BATSIZE=10
 DEFAULT_EPOCHS=6
+DEFAULT_INITWREG=0.
+DEFAULT_WREG=0.01
+DEFAULT_SMOOTHING=0.
 
 
 def load_data(p="../../data/buboqa/data/bertified_dataset.npz",
@@ -243,7 +246,7 @@ class BorderSpanDetector(torch.nn.Module):
 
 def run_span_io(lr=DEFAULT_LR,
                 dropout=.5,
-                wreg=0.01,
+                wreg=DEFAULT_WREG,
                 batsize=DEFAULT_BATSIZE,
                 epochs=DEFAULT_EPOCHS,
                 cuda=False,
@@ -306,11 +309,11 @@ def run_span_io(lr=DEFAULT_LR,
 
 def run_span_borders(lr=DEFAULT_LR,
                 dropout=.5,
-                wreg=0.01,
-                initwreg=0.0,
+                wreg=DEFAULT_WREG,
+                initwreg=DEFAULT_INITWREG,
                 batsize=DEFAULT_BATSIZE,
                 epochs=DEFAULT_EPOCHS,
-                smoothing=0.,
+                smoothing=DEFAULT_SMOOTHING,
                 cuda=False,
                 gpu=0,
                 balanced=False,
@@ -352,6 +355,97 @@ def run_span_borders(lr=DEFAULT_LR,
     trainloop = partial(q.train_epoch, model=spandet, dataloader=trainloader, optim=optim, losses=trainlosses, device=device)
     devloop = partial(q.test_epoch, model=spandet, dataloader=devloader, losses=devlosses, device=device)
     testloop = partial(q.test_epoch, model=spandet, dataloader=testloader, losses=testlosses, device=device)
+
+    tt.tick("training")
+    q.run_training(trainloop, devloop, max_epochs=epochs)
+    tt.tock("done training")
+
+    tt.tick("testing")
+    testres = testloop()
+    print(testres)
+    tt.tock("tested")
+    # endregion
+
+
+class RelationClassifier(torch.nn.Module):
+    def __init__(self, bert, relD, dropout=0., extra=False, mask_entity_mention=True, **kw):
+        super(RelationClassifier, self).__init__(**kw)
+        self.bert = bert
+        self.mask_entity_mention = mask_entity_mention
+        dim = self.bert.config.hidden_size
+        if extra:
+            self.lin = torch.nn.Linear(dim, dim)
+            self.act = torch.nn.Tanh()
+        self.extra = extra
+        self.relD = relD
+        numrels = max(relD.values()) + 1
+        self.linout = torch.nn.Linear(dim, numrels)
+        self.dropout = torch.nn.Dropout(p=dropout)
+        # self.actout = torch.nn.Sigmoid()
+
+    def forward(self, x, spanio):       # x: (batsize, seqlen) ints
+        mask = (x != 0)
+        if self.mask_entity_mention:
+            # spanio uses 0/1/2 for mask/false/true
+            spanmask = (spanio == 2)
+            mask = mask & (~spanmask)
+        mask = mask.long()
+        _, a = self.bert(x, attention_mask=mask, output_all_encoded_layers=False)
+        a = self.dropout(a)
+        if self.extra:
+            a = self.act(self.lin(a))
+        logits = self.linout(a)
+        return logits
+
+
+def run_relations(lr=DEFAULT_LR,
+                dropout=.5,
+                wreg=DEFAULT_WREG,
+                initwreg=DEFAULT_INITWREG,
+                batsize=DEFAULT_BATSIZE,
+                epochs=DEFAULT_EPOCHS,
+                smoothing=DEFAULT_SMOOTHING,
+                cuda=False,
+                gpu=0,
+                balanced=False,
+                ):
+    print(locals())
+    if cuda:
+        device = torch.device("cuda", gpu)
+    else:
+        device = torch.device("cpu")
+    # region data
+    tt = q.ticktock("script")
+    tt.msg("running span border with BERT")
+    tt.tick("loading data")
+    data = load_data(which="rel+io", retrelD=True)
+    trainds, devds, testds, relD = data
+    tt.tock("data loaded")
+    tt.msg("Train/Dev/Test sizes: {} {} {}".format(len(trainds), len(devds), len(testds)))
+    trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
+    devloader = DataLoader(devds, batch_size=batsize, shuffle=False)
+    testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
+    # endregion
+
+    # region model
+    tt.tick("loading BERT")
+    bert = BertModel.from_pretrained("bert-base-uncased")
+    m = RelationClassifier(bert, relD, dropout=dropout)
+    m.to(device)
+    tt.tock("loaded BERT")
+    # endregion
+
+    # region training
+    initl2penalty = InitL2Penalty(bert, factor=q.hyperparam(initwreg))
+    optim = BertAdam(m.parameters(), lr=lr, weight_decay=wreg)
+    losses = [q.SmoothedCELoss(smoothing=smoothing), initl2penalty, q.Accuracy()]
+    xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
+    trainlosses = [q.LossWrapper(l) for l in losses]
+    devlosses = [q.LossWrapper(l) for l in xlosses]
+    testlosses = [q.LossWrapper(l) for l in xlosses]
+    trainloop = partial(q.train_epoch, model=m, dataloader=trainloader, optim=optim, losses=trainlosses, device=device)
+    devloop = partial(q.test_epoch, model=m, dataloader=devloader, losses=devlosses, device=device)
+    testloop = partial(q.test_epoch, model=m, dataloader=testloader, losses=testlosses, device=device)
 
     tt.tick("training")
     q.run_training(trainloop, devloop, max_epochs=epochs)
