@@ -165,6 +165,24 @@ class AutomaskedBinarySeqAccuracy(torch.nn.Module):
         return ret
 
 
+class InitL2Penalty(q.PenaltyGetter):
+    def __init__(self, model, factor=1., reduction="mean"):
+        super(InitL2Penalty, self).__init__(model, factor=factor, reduction=reduction)
+        initweight_dict = dict(model.named_parameters())
+        self.weight_names = sorted(initweight_dict.keys())
+        with torch.no_grad():
+            self.initweights = torch.cat([initweight_dict[x].detach().flatten()
+                                     for x in self.weight_names], 0)
+
+    def forward(self, *_, **__):
+        weight_dict = dict(self.model.named_parameters())
+        weights = torch.cat([weight_dict[x].flatten() for x in self.weight_names], 0)
+        penalty = torch.norm(weights - self.initweights, p=2)
+        ret = penalty * q.v(self.factor)
+        return ret
+
+
+
 class IOSpanDetector(torch.nn.Module):
     def __init__(self, bert, dropout=0., extra=False, **kw):
         super(IOSpanDetector, self).__init__(**kw)
@@ -289,6 +307,7 @@ def run_span_io(lr=DEFAULT_LR,
 def run_span_borders(lr=DEFAULT_LR,
                 dropout=.5,
                 wreg=0.01,
+                initwreg=0.01,
                 batsize=DEFAULT_BATSIZE,
                 epochs=DEFAULT_EPOCHS,
                 smoothing=0.4,
@@ -302,7 +321,7 @@ def run_span_borders(lr=DEFAULT_LR,
         device = torch.device("cpu")
     # region data
     tt = q.ticktock("script")
-    tt.msg("running span io with BERT")
+    tt.msg("running span border with BERT")
     tt.tick("loading data")
     data = load_data(which="span/borders")
     trainds, devds, testds = data
@@ -322,11 +341,13 @@ def run_span_borders(lr=DEFAULT_LR,
     # endregion
 
     # region training
+    initl2penalty = InitL2Penalty(bert, factor=q.hyperparam(initwreg))
     optim = BertAdam(spandet.parameters(), lr=lr, weight_decay=wreg)
-    losses = [q.SmoothedCELoss(smoothing=smoothing), q.SeqAccuracy()]
+    losses = [q.SmoothedCELoss(smoothing=smoothing), initl2penalty, q.SeqAccuracy()]
+    xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.SeqAccuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
-    devlosses = [q.LossWrapper(l) for l in losses]
-    testlosses = [q.LossWrapper(l) for l in losses]
+    devlosses = [q.LossWrapper(l) for l in xlosses]
+    testlosses = [q.LossWrapper(l) for l in xlosses]
     trainloop = partial(q.train_epoch, model=spandet, dataloader=trainloader, optim=optim, losses=trainlosses, device=device)
     devloop = partial(q.test_epoch, model=spandet, dataloader=devloader, losses=devlosses, device=device)
     testloop = partial(q.test_epoch, model=spandet, dataloader=testloader, losses=testlosses, device=device)
