@@ -121,6 +121,30 @@ def gen_datasets(which="geo"):
     nlsm.finalize()
     flsm.finalize()
 
+    # region get gate sup
+    gatesups = torch.zeros(flsm.matrix.shape[0], flsm.matrix.shape[1]+1, dtype=torch.long)
+    for i in range(nlsm.matrix.shape[0]):
+        nl_sent = nlsm[i].split()
+        fl_sent = flsm[i].split()
+        inid = False
+        for j, fl_sent_token in enumerate(fl_sent):
+            if re.match("_\w+id", fl_sent_token):
+                inid = True
+            elif fl_sent_token == ")":
+                inid = False
+            elif fl_sent_token == "(":
+                pass
+            else:
+                if inid:
+                    if fl_sent_token in nl_sent:
+                        gatesups[i, j] = 1
+
+
+
+
+    # endregion
+
+    # region print analysis
     print("{} unique words in train, {} unique words in test, {} in test but not in train"
           .format(len(trainwords), len(testwords), len(testwords - trainwords)))
     print(testwords - trainwords)
@@ -137,14 +161,17 @@ def gen_datasets(which="geo"):
     rarerep_fl = trainwords_fl_once | (testwords_fl - trainwords_fl)
     print("{} unique rare rep words in logical forms".format(len(rarerep_fl)))
     print(rarerep_fl)
+    # endregion
 
+    # endregion create datasets
     nlmat = torch.tensor(nlsm.matrix).long()
     flmat = torch.tensor(flsm.matrix).long()
     gold = torch.tensor(flsm.matrix[:, 1:]).long()
     gold = torch.cat([gold, torch.zeros_like(gold[:, 0:1])], 1)
-    tds = torch.utils.data.TensorDataset(nlmat[:devstart], flmat[:devstart], gold[:devstart])
+    tds = torch.utils.data.TensorDataset(nlmat[:devstart], flmat[:devstart], gold[:devstart], gatesups[:devstart][:, 1:])
     vds = torch.utils.data.TensorDataset(nlmat[devstart:teststart], flmat[devstart:teststart], gold[devstart:teststart])
     xds = torch.utils.data.TensorDataset(nlmat[teststart:], flmat[teststart:], gold[teststart:])
+    # endregion
     return (tds, vds, xds), nlsm.D, flsm.D, rarerep, rarerep_fl
 
 
@@ -190,6 +217,21 @@ class TreeAccuracyPrologPar(torch.nn.Module):
         else:
             samesum = same
         return samesum
+
+
+class TrainModel(torch.nn.Module):
+    """
+    Does the normal losses specified, adds a penalty for supervising pointergen gate
+    """
+    def __init__(self, model, losses, gate_pw=1., **kw):
+        super(TrainModel, self).__init__(**kw)
+        self.model = model
+        self.losses = [q.LossWrapper(l) for l in losses]
+
+    def forward(self, x, y, g, gs):
+        p = self.model(x, y)        # (batsize, seqlen, vocsize)
+        lossvals = [loss(p, g) for loss in self.losses]
+        # compute gate
 
 
 def run_normal(lr=0.001,
@@ -278,6 +320,7 @@ def run_normal(lr=0.001,
         ce = q.loss.DiffSmoothedCELoss(mode="probs", ignore_index=0, alpha=goldsmoothing, beta=smoothing)
     acc = q.loss.SeqAccuracy(ignore_index=0)
     elemacc = q.loss.SeqElemAccuracy(ignore_index=0)
+    trainmodel = TrainModel(train_encdec, [ce, elemacc, acc])
     treeacc = TreeAccuracyPrologPar(flD=flD)
     # optim
     optim = torch.optim.Adam(train_encdec.parameters(), lr=lr, weight_decay=wreg)

@@ -43,6 +43,7 @@ class PointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaskedOut
         self.automasker = automasker    # automasker for masking out invalid tokens
         self.gate = gate                # module that takes in the vector and outputs scores of how to mix the gen and cpy distributions
         self._ctx_ids = None     # must be set in every batch, before decoding, contains mapped input sequence ids
+        self._mix_history = None
 
     @property
     def ctx_ids(self):
@@ -54,6 +55,7 @@ class PointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaskedOut
 
     def batch_reset(self):
         self._ctx_ids = None
+        self._mix_history = None
 
     def update(self, x):        # from automasker
         if self.automasker is not None:
@@ -83,6 +85,8 @@ class PointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaskedOut
         mix = self.gate(x)      # (batsize, 2)
         out =   out_gen * mix[:, 0].unsqueeze(1) \
               + out_cpy * mix[:, 1].unsqueeze(1)
+
+        # TODO: save mix in mix history for supervision later
 
         # region automasking
         if self.automasker is not None:
