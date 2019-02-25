@@ -215,6 +215,7 @@ def run_span_io(lr=0.001,
     tt.tick("loading BERT")
     bert = BertModel.from_pretrained("bert-base-uncased")
     spandet = IOSpanDetector(bert)
+    spandet.to(device)
     tt.tock("loaded BERT")
     # endregion
 
