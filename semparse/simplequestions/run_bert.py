@@ -213,10 +213,10 @@ def run_span_io(lr=0.001,
     testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
     # compute balancing hyperparam for BCELoss
     trainios = trainds.tensors[1]
-    numberpos = (trainios == 2).float().sum().item()
-    numberneg = (trainios == 1).float().sum().item()
+    numberpos = (trainios == 2).float().sum()
+    numberneg = (trainios == 1).float().sum()
     if balanced:
-        pos_weight = numberneg/numberpos
+        pos_weight = (numberneg/numberpos)
     else:
         pos_weight = None
     # endregion
