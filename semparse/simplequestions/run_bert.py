@@ -408,6 +408,7 @@ def run_relations(lr=DEFAULT_LR,
                 cuda=False,
                 gpu=0,
                 balanced=False,
+                unmaskmention=False,
                 ):
     print(locals())
     if cuda:
@@ -416,7 +417,7 @@ def run_relations(lr=DEFAULT_LR,
         device = torch.device("cpu")
     # region data
     tt = q.ticktock("script")
-    tt.msg("running span border with BERT")
+    tt.msg("running relation classifier with BERT")
     tt.tick("loading data")
     data = load_data(which="rel+io", retrelD=True)
     trainds, devds, testds, relD = data
@@ -430,7 +431,7 @@ def run_relations(lr=DEFAULT_LR,
     # region model
     tt.tick("loading BERT")
     bert = BertModel.from_pretrained("bert-base-uncased")
-    m = RelationClassifier(bert, relD, dropout=dropout)
+    m = RelationClassifier(bert, relD, dropout=dropout, mask_entity_mention=not unmaskmention)
     m.to(device)
     tt.tock("loaded BERT")
     # endregion
