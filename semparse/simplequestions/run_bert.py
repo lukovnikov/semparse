@@ -188,8 +188,8 @@ def test_io_span_detector():
 
 
 def run_span_io(lr=0.0001,
-                dropout=.3,
-                wreg=0.000000001,
+                dropout=.5,
+                wreg=0.01,
                 batsize=10,
                 epochs=20,
                 cuda=False,
