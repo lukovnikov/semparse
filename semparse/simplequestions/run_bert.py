@@ -187,7 +187,7 @@ def test_io_span_detector():
     print(y)
 
 
-def run_span_io(lr=0.001,
+def run_span_io(lr=0.0001,
                 dropout=.3,
                 wreg=0.000000001,
                 batsize=10,
@@ -230,7 +230,7 @@ def run_span_io(lr=0.001,
     # endregion
 
     # region training
-    optim = BertAdam(spandet.parameters(), lr=lr, weight_decay=wreg, warmup=0.5, t_total=100)
+    optim = BertAdam(spandet.parameters(), lr=lr, weight_decay=wreg)
     losses = [AutomaskedBCELoss(pos_weight=pos_weight), AutomaskedBinarySeqAccuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
     devlosses = [q.LossWrapper(l) for l in losses]
