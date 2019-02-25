@@ -163,6 +163,35 @@ class IOSpanDetector(torch.nn.Module):
         super(IOSpanDetector, self).__init__(**kw)
         self.bert = bert
         dim = self.bert.config.hidden_size
+        # self.lin = torch.nn.Linear(dim, dim)
+        # self.act = torch.nn.Tanh()
+        self.linout = torch.nn.Linear(dim, 1)
+        self.dropout = torch.nn.Dropout(p=dropout)
+        # self.actout = torch.nn.Sigmoid()
+
+    def forward(self, x):       # x: (batsize, seqlen) ints
+        mask = (x != 0).long()
+        a, _ = self.bert(x.long(), attention_mask=mask, output_all_encoded_layers=False)
+        a = self.dropout(a)
+        # a = self.act(self.lin(a))
+        logits = self.linout(a).squeeze(-1)
+        return logits
+
+
+def test_io_span_detector():
+    x = torch.randint(1, 800, (5, 10))
+    x[0, 6:] = 0
+    bert = BertModel.from_pretrained("bert-base-uncased")
+    m = IOSpanDetector(bert)
+    y = m(x)
+    print(y)
+
+
+class BorderSpanDetector(torch.nn.Module):
+    def __init__(self, bert, dropout=0., **kw):
+        super(BorderSpanDetector, self).__init__(**kw)
+        self.bert = bert
+        dim = self.bert.config.hidden_size
         self.lin = torch.nn.Linear(dim, dim)
         self.act = torch.nn.Tanh()
         self.linout = torch.nn.Linear(dim, 1)
@@ -176,15 +205,6 @@ class IOSpanDetector(torch.nn.Module):
         b = self.act(self.lin(a))
         logits = self.linout(b).squeeze(-1)
         return logits
-
-
-def test_io_span_detector():
-    x = torch.randint(1, 800, (5, 10))
-    x[0, 6:] = 0
-    bert = BertModel.from_pretrained("bert-base-uncased")
-    m = IOSpanDetector(bert)
-    y = m(x)
-    print(y)
 
 
 def run_span_io(lr=0.0001,
