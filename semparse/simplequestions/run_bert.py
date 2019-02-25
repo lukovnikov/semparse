@@ -439,8 +439,8 @@ def run_relations(lr=DEFAULT_LR,
     # region training
     initl2penalty = InitL2Penalty(bert, factor=q.hyperparam(initwreg))
     optim = BertAdam(m.parameters(), lr=lr, weight_decay=wreg)
-    losses = [q.SmoothedCELoss(smoothing=smoothing), initl2penalty, q.Accuracy()]
-    xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
+    losses = [q.CELoss(), initl2penalty, q.Accuracy()]
+    xlosses = [q.CELoss(), q.Accuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
     devlosses = [q.LossWrapper(l) for l in xlosses]
     testlosses = [q.LossWrapper(l) for l in xlosses]
