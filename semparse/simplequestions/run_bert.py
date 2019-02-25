@@ -7,6 +7,11 @@ from torch.utils.data import TensorDataset, DataLoader
 from functools import partial
 
 
+DEFAULT_LR=0.0001
+DEFAULT_BATSIZE=10
+DEFAULT_EPOCHS=6
+
+
 def load_data(p="../../data/buboqa/data/bertified_dataset.npz",
               which="span/io",
               retrelD = False,
@@ -65,7 +70,9 @@ def load_data(p="../../data/buboqa/data/bertified_dataset.npz",
     else:
         raise q.SumTingWongException("unknown which mode: {}".format(which))
 
-    selected = [torch.tensor(data[sel]) for sel in selection]
+    tokmat = data["tokmat"]
+
+    selected = [torch.tensor(data[sel]).long() for sel in selection]
     tselected = [sel[:devstart] for sel in selected]
     vselected = [sel[devstart:teststart] for sel in selected]
     xselected = [sel[teststart:] for sel in selected]
@@ -173,7 +180,7 @@ class IOSpanDetector(torch.nn.Module):
 
     def forward(self, x):       # x: (batsize, seqlen) ints
         mask = (x != 0).long()
-        a, _ = self.bert(x.long(), attention_mask=mask, output_all_encoded_layers=False)
+        a, _ = self.bert(x, attention_mask=mask, output_all_encoded_layers=False)
         a = self.dropout(a)
         if self.extra:
             a = self.act(self.lin(a))
@@ -206,21 +213,21 @@ class BorderSpanDetector(torch.nn.Module):
 
     def forward(self, x):       # x: (batsize, seqlen) ints
         mask = (x != 0).long()
-        a, _ = self.bert(x.long(), attention_mask=mask, output_all_encoded_layers=False)
+        a, _ = self.bert(x, attention_mask=mask, output_all_encoded_layers=False)
         a = self.dropout(a)
         if self.extra:
             a = self.act(self.lin(a))
         logits_start = self.linstart(a)
         logits_end = self.linend(a)
-        logits = torch.cat([logits_start.transpose(1, 2), logits_end.transpose(1, 2)], 2)
+        logits = torch.cat([logits_start.transpose(1, 2), logits_end.transpose(1, 2)], 1)
         return logits
 
 
-def run_span_io(lr=0.0001,
+def run_span_io(lr=DEFAULT_LR,
                 dropout=.5,
                 wreg=0.01,
-                batsize=10,
-                epochs=20,
+                batsize=DEFAULT_BATSIZE,
+                epochs=DEFAULT_EPOCHS,
                 cuda=False,
                 gpu=0,
                 balanced=False,
@@ -271,14 +278,19 @@ def run_span_io(lr=0.0001,
     tt.tick("training")
     q.run_training(trainloop, devloop, max_epochs=epochs)
     tt.tock("done training")
+
+    tt.tick("testing")
+    testres = testloop()
+    print(testres)
+    tt.tock("tested")
     # endregion
 
 
-def run_span_borders(lr=0.0001,
+def run_span_borders(lr=DEFAULT_LR,
                 dropout=.5,
                 wreg=0.01,
-                batsize=10,
-                epochs=20,
+                batsize=DEFAULT_BATSIZE,
+                epochs=DEFAULT_EPOCHS,
                 cuda=False,
                 gpu=0,
                 balanced=False,
@@ -303,7 +315,7 @@ def run_span_borders(lr=0.0001,
     # region model
     tt.tick("loading BERT")
     bert = BertModel.from_pretrained("bert-base-uncased")
-    spandet = IOSpanDetector(bert, dropout=dropout)
+    spandet = BorderSpanDetector(bert, dropout=dropout)
     spandet.to(device)
     tt.tock("loaded BERT")
     # endregion
@@ -321,6 +333,11 @@ def run_span_borders(lr=0.0001,
     tt.tick("training")
     q.run_training(trainloop, devloop, max_epochs=epochs)
     tt.tock("done training")
+
+    tt.tick("testing")
+    testres = testloop()
+    print(testres)
+    tt.tock("tested")
     # endregion
 
 
