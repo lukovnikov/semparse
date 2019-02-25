@@ -322,7 +322,7 @@ def run_span_borders(lr=DEFAULT_LR,
 
     # region training
     optim = BertAdam(spandet.parameters(), lr=lr, weight_decay=wreg)
-    losses = [q.CELoss(), q.SeqAccuracy()]
+    losses = [q.SmoothedCELoss(smoothing=0.4), q.SeqAccuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
     devlosses = [q.LossWrapper(l) for l in losses]
     testlosses = [q.LossWrapper(l) for l in losses]
