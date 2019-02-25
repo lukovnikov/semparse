@@ -224,13 +224,13 @@ def run_span_io(lr=0.001,
     # region model
     tt.tick("loading BERT")
     bert = BertModel.from_pretrained("bert-base-uncased")
-    spandet = IOSpanDetector(bert)
+    spandet = IOSpanDetector(bert, dropout=dropout)
     spandet.to(device)
     tt.tock("loaded BERT")
     # endregion
 
     # region training
-    optim = BertAdam(spandet.parameters(), lr=lr, weight_decay=wreg)
+    optim = BertAdam(spandet.parameters(), lr=lr, weight_decay=wreg, warmup=0.5, t_total=100)
     losses = [AutomaskedBCELoss(pos_weight=pos_weight), AutomaskedBinarySeqAccuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
     devlosses = [q.LossWrapper(l) for l in losses]
