@@ -412,6 +412,7 @@ def run_relations(lr=DEFAULT_LR,
                 gpu=0,
                 balanced=False,
                 unmaskmention=False,
+                warmup=1000,
                 ):
     print(locals())
     if cuda:
@@ -441,7 +442,7 @@ def run_relations(lr=DEFAULT_LR,
 
     # region training
     initl2penalty = InitL2Penalty(bert, factor=q.hyperparam(initwreg))
-    optim = BertAdam(m.parameters(), lr=lr, weight_decay=wreg, warmup=0.99, t_total=1000)
+    optim = BertAdam(m.parameters(), lr=lr, weight_decay=wreg, warmup=0.99, t_total=warmup)
     losses = [q.SmoothedCELoss(smoothing=smoothing), initl2penalty, q.Accuracy()]
     xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
