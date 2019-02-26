@@ -5,6 +5,8 @@ import torch
 from tabulate import tabulate
 from torch.utils.data import TensorDataset, DataLoader
 from functools import partial
+import os
+import json
 
 
 DEFAULT_LR=0.0001
@@ -265,6 +267,8 @@ def run_span_io(lr=DEFAULT_LR,
                 warmup=-1.,
                 sched="ang",  # "lin", "cos"
                 ):
+    settings = locals().copy()
+    print(locals())
     if cuda:
         device = torch.device("cuda", gpu)
     else:
@@ -332,7 +336,9 @@ def run_span_borders(lr=DEFAULT_LR,
                 balanced=False,
                 warmup=-1.,
                 sched="ang",
+                savep="exp_bert_span_borders_",
                 ):
+    settings = locals().copy()
     print(locals())
     if cuda:
         device = torch.device("cuda", gpu)
@@ -349,6 +355,8 @@ def run_span_borders(lr=DEFAULT_LR,
     trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
     devloader = DataLoader(devds, batch_size=batsize, shuffle=False)
     testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
+    evalds = TensorDataset(*testloader.dataset.tensors[:-1])
+    evalloader = DataLoader(evalds, batch_size=batsize, shuffle=False)
     # endregion
 
     # region model
@@ -381,6 +389,23 @@ def run_span_borders(lr=DEFAULT_LR,
     testres = testloop()
     print(testres)
     tt.tock("tested")
+
+    if len(savep) > 0:
+        tt.tick("making predictions and saving")
+        i = 0
+        while os.path.exists(savep+str(i)):
+            i += 1
+        os.mkdir(savep + str(i))
+        savedir = savep + str(i)
+        # save model
+        torch.save(spandet, open(os.path.join(savedir, "model.pt"), "wb"))
+        # save settings
+        json.dump(settings, open(os.path.join(savedir, "settings.json"), "w"))
+        # save test predictions
+        testpreds = q.eval_loop(spandet, evalloader, device=device)
+        testpreds = testpreds[0].detach().numpy()
+        np.save(os.path.join(savedir, "prediction.npy"), testpreds)
+        tt.tock("done")
     # endregion
 
 
@@ -428,7 +453,12 @@ def run_relations(lr=DEFAULT_LR,
                 unmaskmention=False,
                 warmup=-1.,
                 sched="ang",
+                savep="exp_bert_rels_",
+                test=False,
                 ):
+    settings = locals().copy()
+    if test:
+        epochs=0
     print(locals())
     if cuda:
         device = torch.device("cuda", gpu)
@@ -445,6 +475,13 @@ def run_relations(lr=DEFAULT_LR,
     trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
     devloader = DataLoader(devds, batch_size=batsize, shuffle=False)
     testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
+    evalds = TensorDataset(*testloader.dataset.tensors[:-1])
+    evalloader = DataLoader(evalds, batch_size=batsize, shuffle=False)
+    if test:
+        evalloader = DataLoader(TensorDataset(*evalloader.dataset[:10]),
+                                batch_size=batsize, shuffle=False)
+        testloader = DataLoader(TensorDataset(*testloader.dataset[:10]),
+                                batch_size=batsize, shuffle=False)
     # endregion
 
     # region model
@@ -477,6 +514,23 @@ def run_relations(lr=DEFAULT_LR,
     testres = testloop()
     print(testres)
     tt.tock("tested")
+
+    if len(savep) > 0:
+        tt.tick("making predictions and saving")
+        i = 0
+        while os.path.exists(savep+str(i)):
+            i += 1
+        os.mkdir(savep + str(i))
+        savedir = savep + str(i)
+        # save model
+        torch.save(m, open(os.path.join(savedir, "model.pt"), "wb"))
+        # save settings
+        json.dump(settings, open(os.path.join(savedir, "settings.json"), "w"))
+        # save test predictions
+        testpreds = q.eval_loop(m, evalloader, device=device)
+        testpreds = testpreds[0].detach().numpy()
+        np.save(os.path.join(savedir, "prediction.npy"), testpreds)
+        tt.tock("done")
     # endregion
 
 
