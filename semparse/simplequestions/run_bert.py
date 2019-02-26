@@ -178,10 +178,13 @@ class InitL2Penalty(q.PenaltyGetter):
                                      for x in self.weight_names], 0)
 
     def forward(self, *_, **__):
-        weight_dict = dict(self.model.named_parameters())
-        weights = torch.cat([weight_dict[x].flatten() for x in self.weight_names], 0)
-        penalty = torch.norm(weights - self.initweights, p=2)
-        ret = penalty * q.v(self.factor)
+        if q.v(self.factor) > 0:
+            weight_dict = dict(self.model.named_parameters())
+            weights = torch.cat([weight_dict[x].flatten() for x in self.weight_names], 0)
+            penalty = torch.norm(weights - self.initweights, p=2)
+            ret = penalty * q.v(self.factor)
+        else:
+            ret = 0
         return ret
 
 
@@ -403,7 +406,7 @@ def run_relations(lr=DEFAULT_LR,
                 wreg=DEFAULT_WREG,
                 initwreg=DEFAULT_INITWREG,
                 batsize=DEFAULT_BATSIZE,
-                epochs=DEFAULT_EPOCHS,
+                epochs=10,
                 smoothing=DEFAULT_SMOOTHING,
                 cuda=False,
                 gpu=0,
@@ -438,9 +441,9 @@ def run_relations(lr=DEFAULT_LR,
 
     # region training
     initl2penalty = InitL2Penalty(bert, factor=q.hyperparam(initwreg))
-    optim = BertAdam(m.parameters(), lr=lr, weight_decay=wreg)
-    losses = [q.CELoss(), initl2penalty, q.Accuracy()]
-    xlosses = [q.CELoss(), q.Accuracy()]
+    optim = BertAdam(m.parameters(), lr=lr, weight_decay=wreg, warmup=0.99, t_total=1000)
+    losses = [q.SmoothedCELoss(smoothing=smoothing), initl2penalty, q.Accuracy()]
+    xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
     devlosses = [q.LossWrapper(l) for l in xlosses]
     testlosses = [q.LossWrapper(l) for l in xlosses]
