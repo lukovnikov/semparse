@@ -255,6 +255,7 @@ def run_span_io(lr=DEFAULT_LR,
                 cuda=False,
                 gpu=0,
                 balanced=False,
+                warmup=1000,
                 ):
     if cuda:
         device = torch.device("cuda", gpu)
@@ -290,7 +291,7 @@ def run_span_io(lr=DEFAULT_LR,
     # endregion
 
     # region training
-    optim = BertAdam(spandet.parameters(), lr=lr, weight_decay=wreg)
+    optim = BertAdam(spandet.parameters(), lr=lr, weight_decay=wreg, warmup=0.99, t_total=1000)
     losses = [AutomaskedBCELoss(pos_weight=pos_weight), AutomaskedBinarySeqAccuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
     devlosses = [q.LossWrapper(l) for l in losses]
@@ -320,6 +321,7 @@ def run_span_borders(lr=DEFAULT_LR,
                 cuda=False,
                 gpu=0,
                 balanced=False,
+                warmup=1000,
                 ):
     print(locals())
     if cuda:
@@ -349,7 +351,7 @@ def run_span_borders(lr=DEFAULT_LR,
 
     # region training
     initl2penalty = InitL2Penalty(bert, factor=q.hyperparam(initwreg))
-    optim = BertAdam(spandet.parameters(), lr=lr, weight_decay=wreg)
+    optim = BertAdam(spandet.parameters(), lr=lr, weight_decay=wreg, warmup=0.99, t_total=warmup)
     losses = [q.SmoothedCELoss(smoothing=smoothing), initl2penalty, q.SeqAccuracy()]
     xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.SeqAccuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
