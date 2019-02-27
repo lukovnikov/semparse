@@ -403,7 +403,7 @@ def run_span_borders(lr=DEFAULT_LR,
         json.dump(settings, open(os.path.join(savedir, "settings.json"), "w"))
         # save test predictions
         testpreds = q.eval_loop(spandet, evalloader, device=device)
-        testpreds = testpreds[0].detach().numpy()
+        testpreds = testpreds[0].cpu().detach().numpy()
         np.save(os.path.join(savedir, "prediction.npy"), testpreds)
         tt.tock("done")
     # endregion
@@ -526,10 +526,22 @@ def run_relations(lr=DEFAULT_LR,
         torch.save(m, open(os.path.join(savedir, "model.pt"), "wb"))
         # save settings
         json.dump(settings, open(os.path.join(savedir, "settings.json"), "w"))
+        # save relation dictionary
+        # json.dump(relD, open(os.path.join(savedir, "relD.json"), "w"))
         # save test predictions
         testpreds = q.eval_loop(m, evalloader, device=device)
-        testpreds = testpreds[0].detach().numpy()
-        np.save(os.path.join(savedir, "prediction.npy"), testpreds)
+        testpreds = testpreds[0].cpu().detach().numpy()
+        np.save(os.path.join(savedir, "testpredictions.npy"), testpreds)
+        # save bert-tokenized questions
+        # tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        # with open(os.path.join(savedir, "testquestions.txt"), "w") as f:
+        #     for batch in evalloader:
+        #         ques, io = batch
+        #         ques = ques.numpy()
+        #         for question in ques:
+        #             qstr = " ".join([x for x in tokenizer.convert_ids_to_tokens(question) if x != "[PAD]"])
+        #             f.write(qstr + "\n")
+
         tt.tock("done")
     # endregion
 
