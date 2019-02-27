@@ -493,7 +493,7 @@ def run_relations(lr=DEFAULT_LR,
     # endregion
 
     # region training
-    totalsteps = len(trainloader) * epochs
+    totalsteps = 100    #len(trainloader) * epochs
     initl2penalty = InitL2Penalty(bert, factor=q.hyperparam(initwreg))
     optim = BertAdam(m.parameters(), lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps,
                      schedule=schedmap[sched])
