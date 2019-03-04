@@ -332,7 +332,6 @@ def run_span_borders(lr=DEFAULT_LR,
                 batsize=DEFAULT_BATSIZE,
                 epochs=DEFAULT_EPOCHS,
                 smoothing=DEFAULT_SMOOTHING,
-                embdim=200,
                 dim=200,
                 numlayers=1,
                 cuda=False,
@@ -364,7 +363,7 @@ def run_span_borders(lr=DEFAULT_LR,
     tt.tick("creating model")
     # tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     bert = BertModel.from_pretrained("bert-base-uncased")
-    dim = bert.config.hidden_size
+    embdim = bert.config.hidden_size
     emb = bert.embeddings.word_embeddings
     # inpD = tokenizer.vocab
     # q.WordEmb.masktoken = "[PAD]"
