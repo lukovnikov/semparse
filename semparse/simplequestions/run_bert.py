@@ -433,9 +433,10 @@ class RelationClassifier(torch.nn.Module):
         self.dropout = torch.nn.Dropout(p=dropout)
         # self.actout = torch.nn.Sigmoid()
 
-    def forward(self, x, spanio):       # x: (batsize, seqlen) ints
+    def forward(self, x, spanio=None):       # x: (batsize, seqlen) ints
         mask = (x != 0)
         if self.mask_entity_mention:
+            assert(spanio is not None)
             # spanio uses 0/1/2 for mask/false/true
             spanmask = (spanio == 2)
             mask = mask & (~spanmask)
@@ -563,6 +564,157 @@ def run_relations(lr=DEFAULT_LR,
     # endregion
 
 
+class BordersAndRelationClassifier(torch.nn.Module):
+    def __init__(self, bert, relD, dropout=0., mask_entity_mention=False, **kw):
+        assert(mask_entity_mention is False)
+        super(BordersAndRelationClassifier, self).__init__(**kw)
+        self.relation_model = RelationClassifier(bert, relD, dropout=dropout, mask_entity_mention=False)
+        self.border_model = BorderSpanDetector(bert, dropout=dropout, extra=False)
+
+    def forward(self, x, spanio=None):
+        borderpred = self.border_model(x)
+        relpred = self.relation_model(x)
+        return borderpred, relpred
+
+
+class BordersAndRelationLosses(torch.nn.Module):
+    def __init__(self, m, cesmoothing=0., **kw):
+        super(BordersAndRelationLosses, self).__init__(**kw)
+        self.m = m
+        self.blosses = [q.SmoothedCELoss(smoothing=cesmoothing), q.SeqAccuracy()]
+        self.rlosses = [q.SmoothedCELoss(smoothing=cesmoothing), q.Accuracy()]
+
+    def forward(self, toks, io, borders, rels):
+        borderpreds, relpreds = self.m(toks)
+        borderlosses = [bloss(borderpreds, borders) for bloss in self.blosses]
+        rellosses = [rloss(relpreds, rels) for rloss in self.rlosses]
+        return borderlosses + rellosses
+
+
+
+def run_both(lr=DEFAULT_LR,
+                dropout=.5,
+                wreg=DEFAULT_WREG,
+                initwreg=DEFAULT_INITWREG,
+                batsize=DEFAULT_BATSIZE,
+                epochs=10,
+                smoothing=DEFAULT_SMOOTHING,
+                cuda=False,
+                gpu=0,
+                balanced=False,
+                maskmention=False,
+                warmup=-1.,
+                sched="ang",
+                savep="exp_bert_both_",
+                test=False,
+                freezeemb=False,
+                ):
+    print(locals())
+    tt = q.ticktock("script")
+    tt.msg("running borders and rel classifier with BERT")
+    settings = locals().copy()
+    if test:
+        epochs=0
+    if cuda:
+        device = torch.device("cuda", gpu)
+    else:
+        device = torch.device("cpu")
+    # region data
+    tt.tick("loading data")
+    data = load_data(which="all", retrelD=True)
+    trainds, devds, testds, relD = data
+    tt.tock("data loaded")
+    tt.msg("Train/Dev/Test sizes: {} {} {}".format(len(trainds), len(devds), len(testds)))
+    trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
+    devloader = DataLoader(devds, batch_size=batsize, shuffle=False)
+    testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
+    evalds = TensorDataset(*testloader.dataset.tensors[:2])
+    evalloader = DataLoader(evalds, batch_size=batsize, shuffle=False)
+    if test:
+        evalloader = DataLoader(TensorDataset(*evalloader.dataset[:10]),
+                                batch_size=batsize, shuffle=False)
+        testloader = DataLoader(TensorDataset(*testloader.dataset[:10]),
+                                batch_size=batsize, shuffle=False)
+    # endregion
+
+    # region model
+    tt.tick("loading BERT")
+    bert = BertModel.from_pretrained("bert-base-uncased")
+    m = BordersAndRelationClassifier(bert, relD, dropout=dropout, mask_entity_mention=maskmention)
+    m.to(device)
+    tt.tock("loaded BERT")
+    # endregion
+
+    # region training
+    totalsteps = len(trainloader) * epochs
+    assert(initwreg == 0.)
+    initl2penalty = InitL2Penalty(bert, factor=q.hyperparam(initwreg))
+
+    params = []
+    for paramname, param in m.named_parameters():
+        if paramname.startswith("bert.embeddings.word_embeddings"):
+            if not freezeemb:
+                params.append(param)
+        else:
+            params.append(param)
+    optim = BertAdam(params, lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps,
+                     schedule=schedmap[sched])
+    tmodel = BordersAndRelationLosses(m, cesmoothing=smoothing)
+    # xmodel = BordersAndRelationLosses(m, cesmoothing=smoothing)
+    # losses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
+    # xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
+    tlosses = [q.SelectedLinearLoss(i) for i in range(4)]
+    xlosses = [q.SelectedLinearLoss(i) for i in range(4)]
+    trainlosses = [q.LossWrapper(l) for l in tlosses]
+    devlosses = [q.LossWrapper(l) for l in xlosses]
+    testlosses = [q.LossWrapper(l) for l in xlosses]
+    trainloop = partial(q.train_epoch, model=tmodel, dataloader=trainloader, optim=optim, losses=trainlosses, device=device)
+    devloop = partial(q.test_epoch, model=tmodel, dataloader=devloader, losses=devlosses, device=device)
+    testloop = partial(q.test_epoch, model=tmodel, dataloader=testloader, losses=testlosses, device=device)
+
+    tt.tick("training")
+    q.run_training(trainloop, devloop, max_epochs=epochs)
+    tt.tock("done training")
+
+    tt.tick("testing")
+    testres = testloop()
+    print(testres)
+    tt.tock("tested")
+
+    if len(savep) > 0:
+        tt.tick("making predictions and saving")
+        i = 0
+        while os.path.exists(savep+str(i)):
+            i += 1
+        os.mkdir(savep + str(i))
+        savedir = savep + str(i)
+        # save model
+        torch.save(m, open(os.path.join(savedir, "model.pt"), "wb"))
+        # save settings
+        json.dump(settings, open(os.path.join(savedir, "settings.json"), "w"))
+        # save relation dictionary
+        # json.dump(relD, open(os.path.join(savedir, "relD.json"), "w"))
+        # save test predictions
+        testpreds = q.eval_loop(m, evalloader, device=device)
+        borderpreds = testpreds[0].cpu().detach().numpy()
+        relpreds = testpreds[1].cpu().detach().numpy()
+        np.save(os.path.join(savedir, "borderpreds.npy"), borderpreds)
+        np.save(os.path.join(savedir, "relpreds.npy"), relpreds)
+        # save bert-tokenized questions
+        # tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        # with open(os.path.join(savedir, "testquestions.txt"), "w") as f:
+        #     for batch in evalloader:
+        #         ques, io = batch
+        #         ques = ques.numpy()
+        #         for question in ques:
+        #             qstr = " ".join([x for x in tokenizer.convert_ids_to_tokens(question) if x != "[PAD]"])
+        #             f.write(qstr + "\n")
+
+        tt.tock("done")
+    # endregion
+
+
 if __name__ == '__main__':
     # test_io_span_detector()
-    q.argprun(run_span_borders)
+    # q.argprun(run_span_borders)
+    q.argprun(run_both)
