@@ -48,17 +48,19 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
             sent = "[CLS] {} [SEP]".format(line[5].lower())
             span = "O {} O".format(line[6]).split()
             bertsent = []       #tokenizer.basic_tokenizer.tokenize(sent)
+            unberter = []
             sent = sent.split()
             bertspan = []
             for i, (token, io) in enumerate(zip(sent, span)):
                 berttokens = tokenizer.tokenize(token)
                 bertsent += berttokens
                 bertspan += [io] * len(berttokens)
+                unberter += [i] * len(berttokens)
         except Exception as e:
             print(e)
             print(line)
             # raise e
-        return bertsent, bertspan, rel
+        return bertsent, bertspan, rel, unberter
 
     k = 1331
     ret = bertify(trainlines[k])
@@ -67,12 +69,12 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
     print(tabulate([trainlines[k][5].split(), trainlines[k][6].split()]))
 
     tt.tick("bertifying")
-    bert_tokens_train, bert_io_train, bert_rel_train = zip(*[bertify(line) for line in trainlines])
-    bert_tokens_dev,   bert_io_dev,   bert_rel_dev   = zip(*[bertify(line) for line in devlines])
-    bert_tokens_test,  bert_io_test,  bert_rel_test  = zip(*[bertify(line) for line in testlines])
+    bert_tokens_train, bert_io_train, bert_rel_train, unberter_train = zip(*[bertify(line) for line in trainlines])
+    bert_tokens_dev,   bert_io_dev,   bert_rel_dev,   unberter_dev   = zip(*[bertify(line) for line in devlines])
+    bert_tokens_test,  bert_io_test,  bert_rel_test,  unberter_test  = zip(*[bertify(line) for line in testlines])
     tt.tock("bertified")
 
-    print(tabulate([bert_tokens_train[3], bert_io_train[3]]))
+    print(tabulate([bert_tokens_train[3], bert_io_train[3], unberter_train[3]]))
     print(bert_rel_train[3])
 
     # construct numpy matrix with ids in bert vocabulary
@@ -113,6 +115,14 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
             i += 1
     tt.tock("io matrix created")
 
+    # unbert mat
+    unbertmat = np.zeros_like(tokmat)
+    i = 0
+    for unberter in [unberter_train, unberter_dev, unberter_test]:
+        for unbert_i in unberter:
+            unbertmat[i, :len(unbert_i)] = [xe+1 for xe in unbert_i]
+            i += 1
+
     tt.tick("testing")
     test_i = 1331
     test_tokids = [xe for xe in tokmat[test_i] if xe != 0]
@@ -139,7 +149,7 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
     tt.tock("done relations")
 
     np.savez(outp, tokmat=tokmat, iomat=iomat, ioborders=iobordersmat,
-             rels=rels, relD=relD, relcounts=relcounts,
+             rels=rels, relD=relD, relcounts=relcounts, unbertmat=unbertmat,
              devstart=devstart, teststart=teststart)
 
     threshold = 2
