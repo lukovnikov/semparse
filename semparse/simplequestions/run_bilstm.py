@@ -238,7 +238,8 @@ class BorderSpanDetector(torch.nn.Module):
         # self.actout = torch.nn.Sigmoid()
 
     def forward(self, x):       # x: (batsize, seqlen) ints
-        xemb, mask = self.emb(x)
+        xemb = self.emb(x)
+        mask = (x != 0).float()
         a = self.bilstm(xemb, mask=mask)
         a = self.dropout(a)
         if self.extra:
@@ -361,10 +362,13 @@ def run_span_borders(lr=DEFAULT_LR,
 
     # region model
     tt.tick("creating model")
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-    inpD = tokenizer.vocab
-    q.WordEmb.masktoken = "[PAD]"
-    emb = q.WordEmb(embdim, worddic=inpD)
+    # tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    bert = BertModel.from_pretrained("bert-base-uncased")
+    dim = bert.config.hidden_size
+    emb = bert.embeddings.word_embeddings
+    # inpD = tokenizer.vocab
+    # q.WordEmb.masktoken = "[PAD]"
+    # emb = q.WordEmb(embdim, worddic=inpD)
     bilstm = q.rnn.LSTMEncoder(embdim, *([dim] * numlayers), bidir=True, dropout_in_shared=dropout)
     spandet = BorderSpanDetector(emb, bilstm, dim*2, dropout=dropout)
     spandet.to(device)
