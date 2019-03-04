@@ -565,31 +565,75 @@ def run_relations(lr=DEFAULT_LR,
 
 
 class BordersAndRelationClassifier(torch.nn.Module):
-    def __init__(self, bert, relD, dropout=0., mask_entity_mention=False, **kw):
+    def __init__(self, bert, relD, dropout=0., mask_entity_mention=False, extra=False, **kw):
         assert(mask_entity_mention is False)
         super(BordersAndRelationClassifier, self).__init__(**kw)
-        self.relation_model = RelationClassifier(bert, relD, dropout=dropout, mask_entity_mention=False)
-        self.border_model = BorderSpanDetector(bert, dropout=dropout, extra=False)
+        self.bert = bert
+        dim = self.bert.config.hidden_size
+        self.extra = extra
+        self.dropout = torch.nn.Dropout(p=dropout)
+        # relation classification
+        self.mask_entity_mention = mask_entity_mention
+        if extra:
+            self.rlin = torch.nn.Linear(dim, dim)
+            self.ract = torch.nn.Tanh()
+        self.relD = relD
+        numrels = max(relD.values()) + 1
+        self.rlinout = torch.nn.Linear(dim, numrels)
+        # endregion
+        # region border classification
+        if extra:
+            self.blin = torch.nn.Linear(dim, dim)
+            self.bact = torch.nn.Tanh()
+        self.blinstart = torch.nn.Linear(dim, 1)
+        self.blinend = torch.nn.Linear(dim, 1)
+        # endregion
+        # self.actout = torch.nn.Sigmoid()
+        # self.relation_model = RelationClassifier(bert, relD, dropout=dropout, mask_entity_mention=False)
+        # self.border_model = BorderSpanDetector(bert, dropout=dropout, extra=False)
 
     def forward(self, x, spanio=None):
-        borderpred = self.border_model(x)
-        relpred = self.relation_model(x)
-        return borderpred, relpred
+        # region shared
+        mask = (x != 0).long()
+        all, pool = self.bert(x, attention_mask=mask, output_all_encoded_layers=False)
+
+        # endregion
+        # region relation prediction
+        assert(self.mask_entity_mention is False)
+        pool = self.dropout(pool)
+        if self.extra:
+            pool = self.ract(self.rlin(pool))
+        rlogits = self.rlinout(pool)
+        # endregion
+
+        # region border prediction
+        all = self.dropout(all)
+        if self.extra:
+            all = self.bact(self.blin(all))
+        blogits_start = self.blinstart(all)
+        blogits_end = self.blinend(all)
+        blogits = torch.cat([blogits_start.transpose(1, 2),
+                             blogits_end.transpose(1, 2)], 1)
+        # endregion
+        return blogits, rlogits
 
 
 class BordersAndRelationLosses(torch.nn.Module):
     def __init__(self, m, cesmoothing=0., **kw):
         super(BordersAndRelationLosses, self).__init__(**kw)
         self.m = m
-        self.blosses = [q.SmoothedCELoss(smoothing=cesmoothing), q.SeqAccuracy()]
-        self.rlosses = [q.SmoothedCELoss(smoothing=cesmoothing), q.Accuracy()]
+        self.blosses = [q.SmoothedCELoss(smoothing=cesmoothing, reduction="none"), q.SeqAccuracy(reduction="none")]
+        self.rlosses = [q.SmoothedCELoss(smoothing=cesmoothing, reduction="none"), q.Accuracy(reduction="none")]
 
     def forward(self, toks, io, borders, rels):
         borderpreds, relpreds = self.m(toks)
-        borderlosses = [bloss(borderpreds, borders) for bloss in self.blosses]
-        rellosses = [rloss(relpreds, rels) for rloss in self.rlosses]
-        return borderlosses + rellosses
-
+        borderces = self.blosses[0](borderpreds, borders)   # (batsize, 2)
+        borderces = borderces.mean(1)
+        borderaccs = self.blosses[1](borderpreds, borders)   # (batsize, 2)
+        relces = self.rlosses[0](relpreds, rels)
+        relaccs = self.rlosses[1](relpreds, rels)
+        bothacc = (relaccs.long() & borderaccs.long()).float()
+        return [borderces, borderaccs, relces, relaccs, bothacc]
 
 
 def run_both(lr=DEFAULT_LR,
@@ -663,8 +707,8 @@ def run_both(lr=DEFAULT_LR,
     # xmodel = BordersAndRelationLosses(m, cesmoothing=smoothing)
     # losses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
     # xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
-    tlosses = [q.SelectedLinearLoss(i) for i in range(4)]
-    xlosses = [q.SelectedLinearLoss(i) for i in range(4)]
+    tlosses = [q.SelectedLinearLoss(i) for i in range(5)]
+    xlosses = [q.SelectedLinearLoss(i) for i in range(5)]
     trainlosses = [q.LossWrapper(l) for l in tlosses]
     devlosses = [q.LossWrapper(l) for l in xlosses]
     testlosses = [q.LossWrapper(l) for l in xlosses]
