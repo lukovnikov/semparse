@@ -239,6 +239,9 @@ class BorderSpanDetector(torch.nn.Module):
 
     def forward(self, x):       # x: (batsize, seqlen) ints
         mask = (x != 0).long()
+        maxlen = mask.sum(1).max()
+        mask = mask[:, :maxlen + 1]
+        x = x[:, :maxlen+1]
         a, _ = self.bert(x, attention_mask=mask, output_all_encoded_layers=False)
         a = self.dropout(a)
         if self.extra:
@@ -435,6 +438,9 @@ class RelationClassifier(torch.nn.Module):
 
     def forward(self, x, spanio=None):       # x: (batsize, seqlen) ints
         mask = (x != 0)
+        maxlen = mask.long().sum(1).max()
+        mask = mask[:, :maxlen + 1]
+        x = x[:, :maxlen+1]
         if self.mask_entity_mention:
             assert(spanio is not None)
             # spanio uses 0/1/2 for mask/false/true
@@ -595,6 +601,9 @@ class BordersAndRelationClassifier(torch.nn.Module):
     def forward(self, x, spanio=None):
         # region shared
         mask = (x != 0).long()
+        maxlen = mask.sum(1).max()
+        mask = mask[:, :maxlen + 1]
+        x = x[:, :maxlen+1]
         all, pool = self.bert(x, attention_mask=mask, output_all_encoded_layers=False)
 
         # endregion
