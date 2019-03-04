@@ -337,6 +337,7 @@ def run_span_borders(lr=DEFAULT_LR,
                 warmup=-1.,
                 sched="ang",
                 savep="exp_bert_span_borders_",
+                freezeemb=False,
                 ):
     settings = locals().copy()
     print(locals())
@@ -370,7 +371,14 @@ def run_span_borders(lr=DEFAULT_LR,
     # region training
     totalsteps = len(trainloader) * epochs
     initl2penalty = InitL2Penalty(bert, factor=q.hyperparam(initwreg))
-    optim = BertAdam(spandet.parameters(), lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps,
+    params = []
+    for paramname, param in spandet.named_parameters():
+        if paramname.startswith("bert.embeddings.word_embeddings"):
+            if not freezeemb:
+                params.append(param)
+        else:
+            params.append(param)
+    optim = BertAdam(params, lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps,
                      schedule=schedmap[sched])
     losses = [q.SmoothedCELoss(smoothing=smoothing), initl2penalty, q.SeqAccuracy()]
     xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.SeqAccuracy()]
@@ -455,6 +463,7 @@ def run_relations(lr=DEFAULT_LR,
                 sched="ang",
                 savep="exp_bert_rels_",
                 test=False,
+                freezeemb=False,
                 ):
     settings = locals().copy()
     if test:
@@ -495,7 +504,15 @@ def run_relations(lr=DEFAULT_LR,
     # region training
     totalsteps = len(trainloader) * epochs
     initl2penalty = InitL2Penalty(bert, factor=q.hyperparam(initwreg))
-    optim = BertAdam(m.parameters(), lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps,
+
+    params = []
+    for paramname, param in m.named_parameters():
+        if paramname.startswith("bert.embeddings.word_embeddings"):
+            if not freezeemb:
+                params.append(param)
+        else:
+            params.append(param)
+    optim = BertAdam(params, lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps,
                      schedule=schedmap[sched])
     losses = [q.SmoothedCELoss(smoothing=smoothing), initl2penalty, q.Accuracy()]
     xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
@@ -548,4 +565,4 @@ def run_relations(lr=DEFAULT_LR,
 
 if __name__ == '__main__':
     # test_io_span_detector()
-    q.argprun(run_span_io)
+    q.argprun(run_span_borders)

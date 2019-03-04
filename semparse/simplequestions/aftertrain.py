@@ -88,8 +88,16 @@ class MiniBaseIndex(object):
                 break
         if debug:
             print(len(results))
-        results = [(res[0], res[1], self.similarity(x, self.base.entries[res[0]][self.field])) for res in results.items()]
-        results = sorted(results, key=lambda x: x[2], reverse=True)
+        results = [(res[0], res[1], self.similarity(x, self.base.entries[res[0]][self.field]))
+                   for res in results.items()]
+
+        def sortkey(x):
+            entid = x[0]
+            pop = self.base.entries[entid]["pop"]
+            sim = x[2]
+            return sim * 1e2 + pop * 1e-3
+
+        results = sorted(results, key=sortkey, reverse=True)
         results = results[:top]
         return results
 
@@ -131,12 +139,12 @@ class MiniBase(object):
         index.finalize()
         self.indexes[field] = index
 
-    def search(self, x=None, field=None, fuzziness=0, top=20, expl=5000):
+    def search(self, x=None, field=None, fuzziness=0, top=20, expl=5000, debug=False):
         if field is None:
             if len(self.indexes) == 1:
                 field = list(self.indexes.keys())[0]
         index = self.indexes[field]
-        ret_ids = index.search(x, top=top, expl=expl)
+        ret_ids = index.search(x, top=top, expl=expl, debug=debug)
         results = [
             {
              "entry_number": res[0],
@@ -225,17 +233,19 @@ class FuzzyBase(object):
 
 
 def build_entity_index(p="../../data/buboqa/indexes/names_2M.pkl",
+                       ncp="../../data/buboqa/indexes/numconnections_2M.pkl",
                        outp="../../data/buboqa/data/names_2M.labels.index",
                        testsearch=False):
     tt = q.ticktock("index-entities")
     tt.tick("loading names pkl")
     entnames = pkl.load(open(p, "rb"))
+    numrels = pkl.load(open(ncp, "rb"))
     tt.tock("loaded names pkl")
     tt.tick("building minibase")
     fset = MiniBase()
     for uri, names in tqdm(entnames.items()):
         for name in names:
-            fset.add(sf=name, uri=uri)
+            fset.add(sf=name, uri=uri, pop=numrels[uri])
     tt.tock("built")
     tt.tick("building index")
     fset.build_index("sf")
@@ -251,6 +261,7 @@ def build_entity_index(p="../../data/buboqa/indexes/names_2M.pkl",
     queyr = "home of the brave"
     # print("query: ", query)
     if testsearch:
+
         embed()
     # ret = fset.search(query)
     tt.tock("test search done")
@@ -306,7 +317,8 @@ def run(indexp="../../data/buboqa/indexes/",
 def run_borders(p="exp_bert_span_borders_1",
                 qp="../../data/buboqa/data/processed_simplequestions_dataset/all.txt",
                 dp="../../data/buboqa/data/bertified_dataset.npz",
-                namesp="../../data/buboqa/data/names_2M.labels.bloom"):
+                namesp="../../data/buboqa/data/names_2M.labels.bloom",
+                ):
     """ Convert wordpiece level borders to wordlevel borders, check with available names """
     # region load data
     berttok = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -374,8 +386,11 @@ def run_borders(p="exp_bert_span_borders_1",
     at5 = set()
     at20 = set()
     at50 = set()
+    at150 = set()
+    notfound = set()
     invalid_startends = []
     # empty_startends = []
+    allcands = []
     for i in tqdm(range(len(questions_test))):
         question = questions_test[i]
         startend = torch.einsum("a,b->ab", word_border_probs[i, 0], word_border_probs[i, 1])
@@ -414,8 +429,9 @@ def run_borders(p="exp_bert_span_borders_1",
 
         # recalls
         mention = " ".join(question[start:end])
-        searchres = index.search(mention, top=70)
-        at1ent, at5ents, at20ents, at50ents = set(), set(), set(), set()
+        searchres = index.search(mention, top=200)
+        at1ent, at5ents, at20ents, at50ents, at150ents = set(), set(), set(), set(), set()
+        cands = []
 
         for searchres_i in searchres:
             uri = searchres_i["entry"]["uri"]
@@ -427,6 +443,11 @@ def run_borders(p="exp_bert_span_borders_1",
                 at20ents.add(uri)
             if len(at50ents) < 50:
                 at50ents.add(uri)
+            if len(at150ents) < 150:
+                if uri not in at150ents:
+                    cands.append(uri)
+                at150ents.add(uri)
+        allcands.append(cands)
         if not uris_gold[i] in at1ent:
             at1.add(i)
         if not uris_gold[i] in at5ents:
@@ -435,6 +456,10 @@ def run_borders(p="exp_bert_span_borders_1",
             at20.add(i)
         if not uris_gold[i] in at50ents:
             at50.add(i)
+        if not uris_gold[i] in at150ents:
+            at150.add(i)
+            # debug_print(i)
+            # print(_questions_test[i])
 
     print("{:.4} % corrected (end before start)".format(100 * len(invalid_startends) / len(questions_test)))
     print("{:.4} % accuracy after postprocessing".format(100*(1 - (len(errors)/ len(questions_test)))))
@@ -443,9 +468,13 @@ def run_borders(p="exp_bert_span_borders_1",
     print("{:.4} % R@5".format(100*(1 - (len(at5)/ len(questions_test)))))
     print("{:.4} % R@20".format(100*(1 - (len(at20)/ len(questions_test)))))
     print("{:.4} % R@50".format(100*(1 - (len(at50)/ len(questions_test)))))
+    print("{:.4} % R@150".format(100*(1 - (len(at150)/ len(questions_test)))))
     # for k in range(50):
     #     debug_print(list(someoverlap)[k])
     #     print(_questions_test[list(someoverlap)[k]])
+
+    with open(os.path.join(p, "cands.test.pkl"), "wb") as f:
+        pkl.dump(allcands, f)
 
 
 if __name__ == '__main__':
