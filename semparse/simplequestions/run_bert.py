@@ -633,7 +633,8 @@ class BordersAndRelationLosses(torch.nn.Module):
         relces = self.rlosses[0](relpreds, rels)
         relaccs = self.rlosses[1](relpreds, rels)
         bothacc = (relaccs.long() & borderaccs.long()).float()
-        return [borderces, borderaccs, relces, relaccs, bothacc]
+        allces = borderces + relces
+        return [allces, borderces, borderaccs, relces, relaccs, bothacc]
 
 
 def run_both(lr=DEFAULT_LR,
@@ -707,8 +708,8 @@ def run_both(lr=DEFAULT_LR,
     # xmodel = BordersAndRelationLosses(m, cesmoothing=smoothing)
     # losses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
     # xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
-    tlosses = [q.SelectedLinearLoss(i) for i in range(5)]
-    xlosses = [q.SelectedLinearLoss(i) for i in range(5)]
+    tlosses = [q.SelectedLinearLoss(i) for i in range(6)]
+    xlosses = [q.SelectedLinearLoss(i) for i in range(6)]
     trainlosses = [q.LossWrapper(l) for l in tlosses]
     devlosses = [q.LossWrapper(l) for l in xlosses]
     testlosses = [q.LossWrapper(l) for l in xlosses]
