@@ -683,10 +683,10 @@ def run_both(lr=DEFAULT_LR,
                 freezeemb=False,
 
                 ):
+    settings = locals().copy()
     print(locals())
     tt = q.ticktock("script")
     tt.msg("running borders and rel classifier with BERT")
-    settings = locals().copy()
     if test:
         epochs=0
     if cuda:
