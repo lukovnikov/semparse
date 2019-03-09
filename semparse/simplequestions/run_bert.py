@@ -753,6 +753,7 @@ def run_both(lr=DEFAULT_LR,
     tt.tick("testing")
     testres = testloop()
     print(testres)
+    settings["testres"] = testres
     tt.tock("tested")
 
     if len(savep) > 0:
