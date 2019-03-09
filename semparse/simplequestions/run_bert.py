@@ -681,7 +681,7 @@ def run_both(lr=DEFAULT_LR,
                 savep="exp_bert_both_",
                 test=False,
                 freezeemb=False,
-
+                large=False,
                 ):
     settings = locals().copy()
     print(locals())
@@ -713,7 +713,10 @@ def run_both(lr=DEFAULT_LR,
 
     # region model
     tt.tick("loading BERT")
-    bert = BertModel.from_pretrained("bert-base-uncased")
+    whichbert = "bert-base-uncased"
+    if large:
+        whichbert = "bert-large-uncased"
+    bert = BertModel.from_pretrained(whichbert)
     m = BordersAndRelationClassifier(bert, relD, dropout=dropout, mask_entity_mention=maskmention)
     m.to(device)
     tt.tock("loaded BERT")
