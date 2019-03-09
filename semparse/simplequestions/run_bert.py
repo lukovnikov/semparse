@@ -1,6 +1,7 @@
 import qelos as q
 import numpy as np
-from pytorch_pretrained_bert import BertModel, BertTokenizer, BertAdam
+from pytorch_pretrained_bert import BertModel, BertTokenizer, BertAdam, \
+    WarmupCosineSchedule, WarmupConstantSchedule, WarmupLinearSchedule, LRSchedule
 import torch
 from tabulate import tabulate
 from torch.utils.data import TensorDataset, DataLoader
@@ -649,6 +650,20 @@ class BordersAndRelationLosses(torch.nn.Module):
         return [allces, borderces, borderaccs, relces, relaccs, bothacc]
 
 
+def get_schedule(sched=None, warmup=-1, t_total=-1, cycles=None):
+    if sched == "none" or sched is None:
+        schedule = LRSchedule(warmup=warmup, t_total=t_total)
+    elif sched == "lin":
+        schedule = WarmupConstantSchedule(warmup=warmup, t_total=t_total)
+    elif sched == "ang":
+        schedule = WarmupLinearSchedule(warmup=warmup, t_total=t_total)
+    elif sched == "cos":
+        schedule = WarmupCosineSchedule(warmup=warmup, t_total=t_total, cycles=cycles)
+    else:
+        raise Exception("unknown schedule '{}'".format(sched))
+    return schedule
+
+
 def run_both(lr=DEFAULT_LR,
                 dropout=.5,
                 wreg=DEFAULT_WREG,
@@ -662,9 +677,11 @@ def run_both(lr=DEFAULT_LR,
                 maskmention=False,
                 warmup=-1.,
                 sched="ang",
+                cycles=0.5,
                 savep="exp_bert_both_",
                 test=False,
                 freezeemb=False,
+
                 ):
     print(locals())
     tt = q.ticktock("script")
@@ -714,8 +731,8 @@ def run_both(lr=DEFAULT_LR,
                 params.append(param)
         else:
             params.append(param)
-    optim = BertAdam(params, lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps,
-                     schedule=schedmap[sched])
+    sched = get_schedule(sched, warmup=warmup, t_total=totalsteps, cycles=cycles)
+    optim = BertAdam(params, lr=lr, weight_decay=wreg, schedule=sched)
     tmodel = BordersAndRelationLosses(m, cesmoothing=smoothing)
     # xmodel = BordersAndRelationLosses(m, cesmoothing=smoothing)
     # losses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
