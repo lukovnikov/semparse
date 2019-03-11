@@ -589,6 +589,7 @@ class BordersAndRelationClassifier(torch.nn.Module):
         self.relD = relD
         numrels = max(relD.values()) + 1
         self.rlinout = torch.nn.Linear(dim, numrels)
+        self.clip_len = True
         # endregion
         # region border classification
         if extra:
@@ -604,10 +605,11 @@ class BordersAndRelationClassifier(torch.nn.Module):
     def forward(self, x, spanio=None):
         # region shared
         mask = (x != 0).long()
-        maxlen = mask.sum(1).max().item()
-        maxlen = min(x.size(1), maxlen + 1)
-        mask = mask[:, :maxlen]
-        x = x[:, :maxlen]
+        if self.clip_len:
+            maxlen = mask.sum(1).max().item()
+            maxlen = min(x.size(1), maxlen + 1)
+            mask = mask[:, :maxlen]
+            x = x[:, :maxlen]
         all, pool = self.bert(x, attention_mask=mask, output_all_encoded_layers=False)
 
         # endregion
@@ -750,6 +752,7 @@ def run_both(lr=DEFAULT_LR,
     testloop = partial(q.test_epoch, model=tmodel, dataloader=testloader, losses=testlosses, device=device)
 
     tt.tick("training")
+    m.clip_len = True
     q.run_training(trainloop, devloop, max_epochs=epochs)
     tt.tock("done training")
 
@@ -773,6 +776,7 @@ def run_both(lr=DEFAULT_LR,
         # save relation dictionary
         # json.dump(relD, open(os.path.join(savedir, "relD.json"), "w"))
         # save test predictions
+        m.clip_len = False
         testpreds = q.eval_loop(m, evalloader, device=device)
         borderpreds = testpreds[0].cpu().detach().numpy()
         relpreds = testpreds[1].cpu().detach().numpy()
