@@ -9,9 +9,9 @@ from tqdm import tqdm
 # TODO: exclude relations that have not been seen during training
 def run(borderp="exp_bert_both_8",
         predp="exp_bert_both_8",
-        dp="../../data/buboqa/data/bertified_dataset.npz",
+        dp="../../data/buboqa/data/bertified_dataset.npz.server",
         reachp="../../data/buboqa/indexes/reachability_2M.pkl",
-        topk=50,
+        topk=5,
         outf="output.txt"):
     # region load data
     canp = os.path.join(borderp, "cands.test.pkl")
@@ -29,7 +29,6 @@ def run(borderp="exp_bert_both_8",
             relreaches[ve].add(k)
     relD = data["relD"].item()
     revrelD = {v: k for k, v in relD.items()}
-    print(data.keys())
     print("{} unique relation in all data".format(len(relD)))
     # endregion
 

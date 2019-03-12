@@ -664,8 +664,11 @@ class BordersAndRelationLosses(torch.nn.Module):
     def __init__(self, m, cesmoothing=0., **kw):
         super(BordersAndRelationLosses, self).__init__(**kw)
         self.m = m
-        self.blosses = [q.SmoothedCELoss(smoothing=cesmoothing, reduction="none"), q.SeqAccuracy(reduction="none"), SpanF1Borders(reduction="none")]
-        self.rlosses = [q.SmoothedCELoss(smoothing=cesmoothing, reduction="none"), q.Accuracy(reduction="none")]
+        self.blosses = [q.SmoothedCELoss(smoothing=cesmoothing, reduction="none"),
+                        q.SeqAccuracy(reduction="none"),
+                        SpanF1Borders(reduction="none")]
+        self.rlosses = [q.SmoothedCELoss(smoothing=cesmoothing, reduction="none"),
+                        q.Accuracy(reduction="none")]
 
     def forward(self, toks, io, borders, rels):
         borderpreds, relpreds = self.m(toks)
@@ -812,7 +815,7 @@ def run_both(lr=DEFAULT_LR,
         # save relation dictionary
         # json.dump(relD, open(os.path.join(savedir, "relD.json"), "w"))
         # save test predictions
-        # m.clip_len = False
+        m.clip_len = False
         testpreds = q.eval_loop(m, evalloader, device=device)
         borderpreds = testpreds[0].cpu().detach().numpy()
         relpreds = testpreds[1].cpu().detach().numpy()

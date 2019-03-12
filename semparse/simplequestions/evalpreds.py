@@ -15,11 +15,13 @@ def run(predp="exp_bert_both_8/output.txt",
         predent, predrel = predent.strip(), predrel.strip()
         goldsplits = goldline.strip().split("\t")
         goldent, goldrel = goldsplits[1].strip(), goldsplits[3].strip()
-        entacc += predent == goldent
-        relacc += predrel == goldrel
-        allacc += predent == goldent and predrel == goldrel
+        entacc += float(predent == goldent)
+        relacc += float(predrel == goldrel)
+        allacc += float(predent == goldent and predrel == goldrel)
         if predent != goldent or predrel != goldrel:
-            print(predline, goldline)
+            print(predline.strip(), goldline.strip())
+            print(predent, goldent, predrel, goldrel)
+            print()
         total += 1.
 
     print("{:.3}% total acc\n\t - {:.3}% ent acc\n\t - {:.3}% rel acc".format(
