@@ -672,7 +672,7 @@ class BordersAndRelationLosses(torch.nn.Module):
         borderces = self.blosses[0](borderpreds, borders)   # (batsize, 2)
         borderces = borderces.mean(1)
         borderaccs = self.blosses[1](borderpreds, borders)   # (batsize, 2)
-        borderf1 = self.blosses[2]
+        borderf1 = self.blosses[2](borderpreds, borders)
         relces = self.rlosses[0](relpreds, rels)
         relaccs = self.rlosses[1](relpreds, rels)
         bothacc = (relaccs.long() & borderaccs.long()).float()
