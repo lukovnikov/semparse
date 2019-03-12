@@ -1,7 +1,7 @@
 import qelos as q
 import numpy as np
 from pytorch_pretrained_bert import BertModel, BertTokenizer, BertAdam, \
-    WarmupCosineSchedule, WarmupConstantSchedule, WarmupLinearSchedule, LRSchedule
+    WarmupCosineSchedule, WarmupConstantSchedule, WarmupLinearSchedule, LRSchedule, WarmupCosineWithRestartsSchedule
 import torch
 from tabulate import tabulate
 from torch.utils.data import TensorDataset, DataLoader
@@ -688,6 +688,8 @@ def get_schedule(sched=None, warmup=-1, t_total=-1, cycles=None):
         schedule = WarmupLinearSchedule(warmup=warmup, t_total=t_total)
     elif sched == "cos":
         schedule = WarmupCosineSchedule(warmup=warmup, t_total=t_total, cycles=cycles)
+    elif sched == "cosrestart":
+        schedule = WarmupCosineWithRestartsSchedule(warmup=warmup, t_total=t_total, cycles=cycles)
     else:
         raise Exception("unknown schedule '{}'".format(sched))
     return schedule
@@ -706,7 +708,7 @@ def run_both(lr=DEFAULT_LR,
                 maskmention=False,
                 warmup=-1.,
                 sched="ang",
-                cycles=0.5,
+                cycles=-1.,
                 savep="exp_bert_both_",
                 test=False,
                 freezeemb=False,
@@ -722,6 +724,12 @@ def run_both(lr=DEFAULT_LR,
         device = torch.device("cuda", gpu)
     else:
         device = torch.device("cpu")
+    if cycles == -1:
+        if sched == "cos":
+            cycles = 0.5
+        elif sched == "cosrestart":
+            cycles = 1.0
+
     # region data
     tt.tick("loading data")
     data = load_data(which="all", retrelD=True)
@@ -769,8 +777,8 @@ def run_both(lr=DEFAULT_LR,
     # xmodel = BordersAndRelationLosses(m, cesmoothing=smoothing)
     # losses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
     # xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
-    tlosses = [q.SelectedLinearLoss(i) for i in range(6)]
-    xlosses = [q.SelectedLinearLoss(i) for i in range(6)]
+    tlosses = [q.SelectedLinearLoss(i) for i in range(7)]
+    xlosses = [q.SelectedLinearLoss(i) for i in range(7)]
     trainlosses = [q.LossWrapper(l) for l in tlosses]
     devlosses = [q.LossWrapper(l) for l in xlosses]
     testlosses = [q.LossWrapper(l) for l in xlosses]
