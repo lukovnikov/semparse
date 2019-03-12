@@ -185,7 +185,7 @@ class SpanF1Borders(torch.nn.Module):
         overlap = (overlap_end - overlap_start).float().clamp_min(0)
         recall = overlap / (gold_end - gold_start).float().clamp_min(1e-6)
         precision = overlap / (pred_end - pred_start).float().clamp_min(1e-6)
-        f1 = 2 * recall * precision / (recall + precision)
+        f1 = 2 * recall * precision / (recall + precision).clamp_min(1e-6)
 
         if self.reduction == "sum":
             ret = f1.sum()
