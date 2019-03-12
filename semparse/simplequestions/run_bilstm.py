@@ -170,6 +170,29 @@ class AutomaskedBinarySeqAccuracy(torch.nn.Module):
         return ret
 
 
+class SpanF1Borders(torch.nn.Module):
+    def __init__(self, reduction="mean", **kw):
+        super(SpanF1Borders, self).__init__(**kw)
+        self.reduction = reduction
+
+    def forward(self, pred, gold):      # pred: (batsize, 2, seqlen) probs, gold: (batsize, 2)
+        pred_start, pred_end = torch.argmax(pred, 2).split(1, dim=1)
+        gold_start, gold_end = gold.split(1, dim=1)
+        overlap_start = torch.max(pred_start, gold_start)
+        overlap_end = torch.min(pred_end, gold_end)
+        overlap = (overlap_end - overlap_start).float().clamp_min(0)
+        recall = overlap / (gold_end - gold_start).float().clamp_min(1e-6)
+        precision = overlap / (pred_end - pred_start).float().clamp_min(1e-6)
+        f1 = 2 * recall * precision / (recall + precision).clamp_min(1e-6)
+
+        if self.reduction == "sum":
+            ret = f1.sum()
+        elif self.reduction == "mean":
+            ret = f1.mean()
+        else:
+            ret = f1
+        return ret
+
 class InitL2Penalty(q.PenaltyGetter):
     def __init__(self, model, factor=1., reduction="mean"):
         super(InitL2Penalty, self).__init__(model, factor=factor, reduction=reduction)
@@ -376,8 +399,8 @@ def run_span_borders(lr=DEFAULT_LR,
 
     # region training
     optim = torch.optim.Adam(spandet.parameters(), lr=lr, weight_decay=wreg)
-    losses = [q.SmoothedCELoss(smoothing=smoothing), q.SeqAccuracy()]
-    xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.SeqAccuracy()]
+    losses = [q.SmoothedCELoss(smoothing=smoothing), q.SeqAccuracy(), SpanF1Borders()]
+    xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.SeqAccuracy(), SpanF1Borders()]
     trainlosses = [q.LossWrapper(l) for l in losses]
     devlosses = [q.LossWrapper(l) for l in xlosses]
     testlosses = [q.LossWrapper(l) for l in xlosses]
