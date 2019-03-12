@@ -740,7 +740,7 @@ def run_both(lr=DEFAULT_LR,
     trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
     devloader = DataLoader(devds, batch_size=batsize, shuffle=False)
     testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
-    evalds = TensorDataset(*testloader.dataset.tensors[:2])
+    evalds = TensorDataset(*testloader.dataset.tensors[:1])
     evalloader = DataLoader(evalds, batch_size=batsize, shuffle=False)
     if test:
         evalloader = DataLoader(TensorDataset(*evalloader.dataset[:10]),
@@ -812,7 +812,7 @@ def run_both(lr=DEFAULT_LR,
         # save relation dictionary
         # json.dump(relD, open(os.path.join(savedir, "relD.json"), "w"))
         # save test predictions
-        m.clip_len = False
+        # m.clip_len = False
         testpreds = q.eval_loop(m, evalloader, device=device)
         borderpreds = testpreds[0].cpu().detach().numpy()
         relpreds = testpreds[1].cpu().detach().numpy()

@@ -314,7 +314,7 @@ def run(indexp="../../data/buboqa/indexes/",
     print(len(names))
 
 
-def run_borders(p="exp_bert_span_borders_1",
+def run_borders(p="exp_bert_both_8",
                 qp="../../data/buboqa/data/processed_simplequestions_dataset/all.txt",
                 dp="../../data/buboqa/data/bertified_dataset.npz",
                 namesp="../../data/buboqa/data/names_2M.labels.bloom",
@@ -322,7 +322,7 @@ def run_borders(p="exp_bert_span_borders_1",
     """ Convert wordpiece level borders to wordlevel borders, check with available names """
     # region load data
     berttok = BertTokenizer.from_pretrained("bert-base-uncased")
-    borderpreds = torch.tensor(np.load(os.path.join(p, "prediction.npy")))
+    borderpreds = torch.tensor(np.load(os.path.join(p, "borderpreds.npy")))
     print(borderpreds.shape)
     data = np.load(dp)
     devstart, teststart = data["devstart"], data["teststart"]
