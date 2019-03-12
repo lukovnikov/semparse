@@ -1,7 +1,8 @@
 import qelos as q
 import numpy as np
 from pytorch_pretrained_bert import BertModel, BertTokenizer, BertAdam, \
-    WarmupCosineSchedule, WarmupConstantSchedule, WarmupLinearSchedule, LRSchedule, WarmupCosineWithRestartsSchedule
+    WarmupCosineSchedule, WarmupConstantSchedule, WarmupLinearSchedule, LRSchedule, \
+    WarmupCosineWithRestartsSchedule
 import torch
 from tabulate import tabulate
 from torch.utils.data import TensorDataset, DataLoader
