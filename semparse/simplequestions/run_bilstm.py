@@ -299,6 +299,7 @@ class BorderSpanDetector(torch.nn.Module):
         self.linend = torch.nn.Linear(dim, 1)
         self.dropout = torch.nn.Dropout(p=dropout)
         # self.actout = torch.nn.Sigmoid()
+        self.outlen = None
 
     def forward(self, x):       # x: (batsize, seqlen) ints
         xemb = self.emb(x)
@@ -310,6 +311,12 @@ class BorderSpanDetector(torch.nn.Module):
         logits_start = self.linstart(a)
         logits_end = self.linend(a)
         logits = torch.cat([logits_start.transpose(1, 2), logits_end.transpose(1, 2)], 1)
+        if self.outlen is not None:
+            logits = torch.cat([logits,
+                                torch.zeros(logits.size(0), 2, self.outlen - logits.size(2),
+                                    device=logits.device,
+                                    dtype=logits.dtype)],
+                               2)
         return logits
 
 
@@ -471,6 +478,10 @@ def run_span_borders(lr=DEFAULT_LR,
         torch.save(spandet, open(os.path.join(savedir, "model.pt"), "wb"))
         # save settings
         json.dump(settings, open(os.path.join(savedir, "settings.json"), "w"))
+
+        outlen = trainloader.dataset.tensors[0].size(1)
+        spandet.outlen = outlen
+
         # save test predictions
         testpreds = q.eval_loop(spandet, evalloader, device=device)
         testpreds = testpreds[0].cpu().detach().numpy()
