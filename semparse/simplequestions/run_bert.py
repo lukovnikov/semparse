@@ -480,6 +480,7 @@ class RelationClassifier(torch.nn.Module):
 
 
 def replace_entity_span(*dss):
+    print("replacing entity span")
     berttok = BertTokenizer.from_pretrained("bert-base-uncased")
     maskid = berttok.vocab["[MASK]"]
     padid = berttok.vocab["[PAD]"]
@@ -502,6 +503,7 @@ def replace_entity_span(*dss):
                     k += 1
         outds = torch.utils.data.TensorDataset(outtokmat, rels)
         outdss.append(outds)
+    print("replaced entity span")
     return outdss
 
 
@@ -538,6 +540,8 @@ def run_relations(lr=DEFAULT_LR,
     trainds, devds, testds, relD = data
     if maskentity:
         trainds, devds, testds = replace_entity_span(trainds, devds, testds)
+    else:
+        trainds, devds, testds = [TensorDataset(ds.tensors[0], ds.tensors[2]) for ds in [trainds, devds, testds]]
     tt.tock("data loaded")
     tt.msg("Train/Dev/Test sizes: {} {} {}".format(len(trainds), len(devds), len(testds)))
     trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
@@ -564,7 +568,6 @@ def run_relations(lr=DEFAULT_LR,
 
     # region training
     totalsteps = len(trainloader) * epochs
-    initl2penalty = InitL2Penalty(bert, factor=q.hyperparam(initwreg))
 
     params = []
     for paramname, param in m.named_parameters():
@@ -574,8 +577,8 @@ def run_relations(lr=DEFAULT_LR,
         else:
             params.append(param)
     optim = BertAdam(params, lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps,
-                     schedule=schedmap[sched])
-    losses = [q.SmoothedCELoss(smoothing=smoothing), initl2penalty, q.Accuracy()]
+                     schedule=schedmap[sched], init_weight_decay=initwreg)
+    losses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
     xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
     devlosses = [q.LossWrapper(l) for l in xlosses]
