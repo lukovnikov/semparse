@@ -390,6 +390,8 @@ def run_span_borders(lr=DEFAULT_LR,
     testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
     evalds = TensorDataset(*testloader.dataset.tensors[:-1])
     evalloader = DataLoader(evalds, batch_size=batsize, shuffle=False)
+    evalds_dev = TensorDataset(*devloader.dataset.tensors[:-1])
+    evalloader_dev = DataLoader(evalds_dev, batch_size=batsize, shuffle=False)
     # endregion
 
     # region model
@@ -402,7 +404,6 @@ def run_span_borders(lr=DEFAULT_LR,
 
     # region training
     totalsteps = len(trainloader) * epochs
-    initl2penalty = InitL2Penalty(bert, factor=q.hyperparam(initwreg))
     params = []
     for paramname, param in spandet.named_parameters():
         if paramname.startswith("bert.embeddings.word_embeddings"):
@@ -412,8 +413,8 @@ def run_span_borders(lr=DEFAULT_LR,
             params.append(param)
     optim = BertAdam(params, lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps,
                      schedule=schedmap[sched])
-    losses = [q.SmoothedCELoss(smoothing=smoothing), initl2penalty, q.SeqAccuracy()]
-    xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.SeqAccuracy()]
+    losses = [q.SmoothedCELoss(smoothing=smoothing), SpanF1Borders(reduction="none"), q.SeqAccuracy()]
+    xlosses = [q.SmoothedCELoss(smoothing=smoothing), SpanF1Borders(reduction="none"), q.SeqAccuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
     devlosses = [q.LossWrapper(l) for l in xlosses]
     testlosses = [q.LossWrapper(l) for l in xlosses]
@@ -444,7 +445,11 @@ def run_span_borders(lr=DEFAULT_LR,
         # save test predictions
         testpreds = q.eval_loop(spandet, evalloader, device=device)
         testpreds = testpreds[0].cpu().detach().numpy()
-        np.save(os.path.join(savedir, "prediction.npy"), testpreds)
+        np.save(os.path.join(savedir, "borderpreds.test.npy"), testpreds)
+        # save dev predictions
+        testpreds = q.eval_loop(spandet, evalloader_dev, device=device)
+        testpreds = testpreds[0].cpu().detach().numpy()
+        np.save(os.path.join(savedir, "borderpreds.dev.npy"), testpreds)
         tt.tock("done")
     # endregion
 

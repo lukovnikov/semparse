@@ -314,12 +314,12 @@ def run(indexp="../../data/buboqa/indexes/",
     print(len(names))
 
 
-def get_dsF1(p="exp_bert_both_8",
+def get_dsF1(p="exp_bert_both_11",
              dp="../../data/buboqa/data/bertified_dataset.npz"):
     data = np.load(dp)
     ioborders, devstart, teststart = data["ioborders"], data["devstart"], data["teststart"]
-    borderpreds = torch.tensor(np.load(os.path.join(p, "borderpreds.npy"))).long()
-    bordergold = torch.tensor(ioborders[teststart:]).long()
+    borderpreds = torch.tensor(np.load(os.path.join(p, "borderpreds.dev.npy"))).long()
+    bordergold = torch.tensor(ioborders[devstart:teststart]).long()
 
     pred_start, pred_end = torch.argmax(borderpreds, 2).split(1, dim=1)
     gold_start, gold_end = bordergold.split(1, dim=1)
@@ -345,12 +345,15 @@ def get_dsF1(p="exp_bert_both_8",
     print((recall > 1).nonzero(), (precision > 1).nonzero())
     recall = recall.mean()
     precision = precision.mean()
+    acc = (f1 == 1).float().mean()
     f1 = f1.mean()
     print("Averaged F1, precision and recall:")
     print(f1.item(), precision.item(), recall.item())
+    print("Span accuracy")
+    print(acc)
 
 
-def run_borders(p="exp_bert_both_8",
+def run_borders(p="exp_bert_both_11",
                 qp="../../data/buboqa/data/processed_simplequestions_dataset/all.txt",
                 dp="../../data/buboqa/data/bertified_dataset.npz",
                 namesp="../../data/buboqa/data/names_2M.labels.bloom",
@@ -358,7 +361,7 @@ def run_borders(p="exp_bert_both_8",
     """ Convert wordpiece level borders to wordlevel borders, check with available names """
     # region load data
     berttok = BertTokenizer.from_pretrained("bert-base-uncased")
-    borderpreds = torch.tensor(np.load(os.path.join(p, "borderpreds.npy")))
+    borderpreds = torch.tensor(np.load(os.path.join(p, "borderpreds.dev.npy")))
     print(borderpreds.shape)
     data = np.load(dp)
     print(data.keys())
@@ -369,9 +372,9 @@ def run_borders(p="exp_bert_both_8",
     questions = open(qp, encoding="utf8").readlines()
     # endregion
 
-    tokmat_test = torch.tensor(tokmat[teststart:]).long()
-    unbert_test = torch.tensor(unbertmat[teststart:]).long()
-    _questions_test = questions[teststart:]
+    tokmat_test = torch.tensor(tokmat[devstart:teststart]).long()
+    unbert_test = torch.tensor(unbertmat[devstart:teststart]).long()
+    _questions_test = questions[devstart:teststart]
     questions_test = [["[CLS]"] + qe.split("\t")[5].split() + ["[SEP]"] for qe in _questions_test]
     borders_test_gold = [["O"] + qe.split("\t")[6].split() + ["O"] for qe in _questions_test]
     uris_gold = [qe.split("\t")[1] for qe in _questions_test]

@@ -380,6 +380,8 @@ def run_span_borders(lr=DEFAULT_LR,
     testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
     evalds = TensorDataset(*testloader.dataset.tensors[:-1])
     evalloader = DataLoader(evalds, batch_size=batsize, shuffle=False)
+    evalds_dev = TensorDataset(*devloader.dataset.tensors[:-1])
+    evalloader_dev = DataLoader(evalds_dev, batch_size=batsize, shuffle=False)
     # endregion
 
     # region model
@@ -399,8 +401,8 @@ def run_span_borders(lr=DEFAULT_LR,
 
     # region training
     optim = torch.optim.Adam(spandet.parameters(), lr=lr, weight_decay=wreg)
-    losses = [q.SmoothedCELoss(smoothing=smoothing), q.SeqAccuracy(), SpanF1Borders()]
-    xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.SeqAccuracy(), SpanF1Borders()]
+    losses = [q.SmoothedCELoss(smoothing=smoothing), SpanF1Borders(), q.SeqAccuracy()]
+    xlosses = [q.SmoothedCELoss(smoothing=smoothing), SpanF1Borders(), q.SeqAccuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
     devlosses = [q.LossWrapper(l) for l in xlosses]
     testlosses = [q.LossWrapper(l) for l in xlosses]
@@ -431,7 +433,12 @@ def run_span_borders(lr=DEFAULT_LR,
         # save test predictions
         testpreds = q.eval_loop(spandet, evalloader, device=device)
         testpreds = testpreds[0].cpu().detach().numpy()
-        np.save(os.path.join(savedir, "prediction.npy"), testpreds)
+        np.save(os.path.join(savedir, "borderpreds.test.npy"), testpreds)
+        # save dev predictions
+        testpreds = q.eval_loop(spandet, evalloader_dev, device=device)
+        testpreds = testpreds[0].cpu().detach().numpy()
+        np.save(os.path.join(savedir, "borderpreds.dev.npy"), testpreds)
+        tt.tock("done")
         tt.tock("done")
     # endregion
 
