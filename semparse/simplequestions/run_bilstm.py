@@ -20,7 +20,8 @@ DEFAULT_SMOOTHING=0.
 def load_data(p="../../data/buboqa/data/bertified_dataset.npz",
               which="span/io",
               retrelD = False,
-              retrelcounts = False):
+              retrelcounts = False,
+              datafrac=1.):
     """
     :param p:       where the stored matrices are
     :param which:   which data to include in output datasets
@@ -81,6 +82,45 @@ def load_data(p="../../data/buboqa/data/bertified_dataset.npz",
     tselected = [sel[:devstart] for sel in selected]
     vselected = [sel[devstart:teststart] for sel in selected]
     xselected = [sel[teststart:] for sel in selected]
+
+    if datafrac <= 1.:
+        # restrict data such that least relations are unseen
+        # get relation counts
+        trainrels = data["rels"][:devstart]
+        uniquerels, relcounts = np.unique(data["rels"][:devstart], return_counts=True)
+        relcountsD = dict(zip(uniquerels, relcounts))
+        relcounter = dict(zip(uniquerels, [0]*len(uniquerels)))
+        totalcap = int(datafrac * len(trainrels))
+        capperrel = max(relcountsD.values())
+
+        def numberexamplesincluded(capperrel_):
+            numberexamplesforcap = np.clip(relcounts, 0, capperrel_).sum()
+            return numberexamplesforcap
+
+        while capperrel > 0:        # TODO do binary search
+            numexcapped = numberexamplesincluded(capperrel)
+            if numexcapped <= totalcap:
+                break
+            capperrel -= 1
+
+        print("rel count cap is {}".format(capperrel))
+
+        remainids = []
+        for i in range(len(trainrels)):
+            if len(remainids) >= totalcap:
+                break
+            if relcounter[trainrels[i]] > capperrel:
+                pass
+            else:
+                relcounter[trainrels[i]] += 1
+                remainids.append(i)
+        print("{}/{} examples retained".format(len(remainids), len(trainrels)))
+        tselected_new = [sel[remainids] for sel in tselected]
+        if datafrac == 1.:
+            for a, b in zip(tselected_new, tselected):
+                assert(np.all(a == b))
+        tselected = tselected_new
+
     traindata = TensorDataset(*tselected)
     devdata = TensorDataset(*vselected)
     testdata = TensorDataset(*xselected)
@@ -360,6 +400,7 @@ def run_span_borders(lr=DEFAULT_LR,
                 cuda=False,
                 gpu=0,
                 savep="exp_bilstm_span_borders_",
+                datafrac=1.,
                 ):
     settings = locals().copy()
     print(locals())
@@ -371,7 +412,7 @@ def run_span_borders(lr=DEFAULT_LR,
     tt = q.ticktock("script")
     tt.msg("running span border with BiLSTM")
     tt.tick("loading data")
-    data = load_data(which="span/borders")
+    data = load_data(which="span/borders", datafrac=datafrac)
     trainds, devds, testds = data
     tt.tock("data loaded")
     tt.msg("Train/Dev/Test sizes: {} {} {}".format(len(trainds), len(devds), len(testds)))
@@ -489,6 +530,7 @@ def run_relations(lr=DEFAULT_LR,
                 sched="ang",
                 savep="exp_bert_rels_",
                 test=False,
+                datafrac=1.,
                 ):
     settings = locals().copy()
     if test:
