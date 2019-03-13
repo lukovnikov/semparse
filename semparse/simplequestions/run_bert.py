@@ -450,10 +450,9 @@ def run_span_borders(lr=DEFAULT_LR,
 
 
 class RelationClassifier(torch.nn.Module):
-    def __init__(self, bert, relD, dropout=0., extra=False, mask_entity_mention=True, **kw):
+    def __init__(self, bert, relD, dropout=0., extra=False, **kw):
         super(RelationClassifier, self).__init__(**kw)
         self.bert = bert
-        self.mask_entity_mention = mask_entity_mention
         dim = self.bert.config.hidden_size
         if extra:
             self.lin = torch.nn.Linear(dim, dim)
@@ -465,17 +464,12 @@ class RelationClassifier(torch.nn.Module):
         self.dropout = torch.nn.Dropout(p=dropout)
         # self.actout = torch.nn.Sigmoid()
 
-    def forward(self, x, spanio=None):       # x: (batsize, seqlen) ints
+    def forward(self, x):       # x: (batsize, seqlen) ints
         mask = (x != 0)
         maxlen = mask.long().sum(1).max().item()
         maxlen = min(x.size(1), maxlen + 1)
         mask = mask[:, :maxlen]
         x = x[:, :maxlen]
-        if self.mask_entity_mention:
-            assert(spanio is not None)
-            # spanio uses 0/1/2 for mask/false/true
-            spanmask = (spanio == 2)
-            mask = mask & (~spanmask)
         mask = mask.long()
         _, a = self.bert(x, attention_mask=mask, output_all_encoded_layers=False)
         a = self.dropout(a)
@@ -483,6 +477,32 @@ class RelationClassifier(torch.nn.Module):
             a = self.act(self.lin(a))
         logits = self.linout(a)
         return logits
+
+
+def replace_entity_span(*dss):
+    berttok = BertTokenizer.from_pretrained("bert-base-uncased")
+    maskid = berttok.vocab["[MASK]"]
+    padid = berttok.vocab["[PAD]"]
+    outdss = []
+    for ds in dss:
+        tokmat, borders, rels = ds.tensors
+        outtokmat = torch.ones_like(tokmat) * padid
+        for i in range(len(tokmat)):
+            k = 0
+            for j in range(tokmat.size(1)):
+                if borders[i][0] == j:
+                    outtokmat[i, k] = maskid
+                    k += 1
+                elif borders[i][0] < j < borders[i][1]:
+                    pass
+                elif tokmat[i, j] == padid:
+                    break
+                else:
+                    outtokmat[i, k] = tokmat[i, j]
+                    k += 1
+        outds = torch.utils.data.TensorDataset(outtokmat, rels)
+        outdss.append(outds)
+    return outdss
 
 
 def run_relations(lr=DEFAULT_LR,
@@ -495,7 +515,7 @@ def run_relations(lr=DEFAULT_LR,
                 cuda=False,
                 gpu=0,
                 balanced=False,
-                unmaskmention=False,
+                maskentity=False,
                 warmup=-1.,
                 sched="ang",
                 savep="exp_bert_rels_",
@@ -514,15 +534,19 @@ def run_relations(lr=DEFAULT_LR,
     tt = q.ticktock("script")
     tt.msg("running relation classifier with BERT")
     tt.tick("loading data")
-    data = load_data(which="rel+io", retrelD=True)
+    data = load_data(which="rel+borders", retrelD=True)
     trainds, devds, testds, relD = data
+    if maskentity:
+        trainds, devds, testds = replace_entity_span(trainds, devds, testds)
     tt.tock("data loaded")
     tt.msg("Train/Dev/Test sizes: {} {} {}".format(len(trainds), len(devds), len(testds)))
     trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
     devloader = DataLoader(devds, batch_size=batsize, shuffle=False)
     testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
-    evalds = TensorDataset(*testloader.dataset.tensors[:-1])
+    evalds = TensorDataset(*testloader.dataset.tensors[:1])
     evalloader = DataLoader(evalds, batch_size=batsize, shuffle=False)
+    evalds_dev = TensorDataset(*devloader.dataset.tensors[:1])
+    evalloader_dev = DataLoader(evalds_dev, batch_size=batsize, shuffle=False)
     if test:
         evalloader = DataLoader(TensorDataset(*evalloader.dataset[:10]),
                                 batch_size=batsize, shuffle=False)
@@ -533,7 +557,7 @@ def run_relations(lr=DEFAULT_LR,
     # region model
     tt.tick("loading BERT")
     bert = BertModel.from_pretrained("bert-base-uncased")
-    m = RelationClassifier(bert, relD, dropout=dropout, mask_entity_mention=not unmaskmention)
+    m = RelationClassifier(bert, relD, dropout=dropout)
     m.to(device)
     tt.tock("loaded BERT")
     # endregion
@@ -585,7 +609,10 @@ def run_relations(lr=DEFAULT_LR,
         # save test predictions
         testpreds = q.eval_loop(m, evalloader, device=device)
         testpreds = testpreds[0].cpu().detach().numpy()
-        np.save(os.path.join(savedir, "testpredictions.npy"), testpreds)
+        np.save(os.path.join(savedir, "relpreds.test.npy"), testpreds)
+        testpreds = q.eval_loop(m, evalloader_dev, device=device)
+        testpreds = testpreds[0].cpu().detach().numpy()
+        np.save(os.path.join(savedir, "relpreds.dev.npy"), testpreds)
         # save bert-tokenized questions
         # tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
         # with open(os.path.join(savedir, "testquestions.txt"), "w") as f:
@@ -847,4 +874,5 @@ def run_both(lr=DEFAULT_LR,
 if __name__ == '__main__':
     # test_io_span_detector()
     # q.argprun(run_span_borders)
-    q.argprun(run_both)
+    # q.argprun(run_both)
+    q.argprun(run_relations)
