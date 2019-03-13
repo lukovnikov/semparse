@@ -744,7 +744,9 @@ def run_both(lr=DEFAULT_LR,
     devloader = DataLoader(devds, batch_size=batsize, shuffle=False)
     testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
     evalds = TensorDataset(*testloader.dataset.tensors[:1])
+    evalds_dev = TensorDataset(*devloader.dataset.tensors[:1])
     evalloader = DataLoader(evalds, batch_size=batsize, shuffle=False)
+    evalloader_dev = DataLoader(evalds_dev, batch_size=batsize, shuffle=False)
     if test:
         evalloader = DataLoader(TensorDataset(*evalloader.dataset[:10]),
                                 batch_size=batsize, shuffle=False)
@@ -816,11 +818,18 @@ def run_both(lr=DEFAULT_LR,
         # json.dump(relD, open(os.path.join(savedir, "relD.json"), "w"))
         # save test predictions
         m.clip_len = False
+        # TEST data
         testpreds = q.eval_loop(m, evalloader, device=device)
         borderpreds = testpreds[0].cpu().detach().numpy()
         relpreds = testpreds[1].cpu().detach().numpy()
-        np.save(os.path.join(savedir, "borderpreds.npy"), borderpreds)
-        np.save(os.path.join(savedir, "relpreds.npy"), relpreds)
+        np.save(os.path.join(savedir, "borderpreds.test.npy"), borderpreds)
+        np.save(os.path.join(savedir, "relpreds.test.npy"), relpreds)
+        # DEV data
+        testpreds = q.eval_loop(m, evalloader_dev, device=device)
+        borderpreds = testpreds[0].cpu().detach().numpy()
+        relpreds = testpreds[1].cpu().detach().numpy()
+        np.save(os.path.join(savedir, "borderpreds.dev.npy"), borderpreds)
+        np.save(os.path.join(savedir, "relpreds.dev.npy"), relpreds)
         # save bert-tokenized questions
         # tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
         # with open(os.path.join(savedir, "testquestions.txt"), "w") as f:

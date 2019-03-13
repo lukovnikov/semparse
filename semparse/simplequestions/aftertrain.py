@@ -314,6 +314,42 @@ def run(indexp="../../data/buboqa/indexes/",
     print(len(names))
 
 
+def get_dsF1(p="exp_bert_both_8",
+             dp="../../data/buboqa/data/bertified_dataset.npz"):
+    data = np.load(dp)
+    ioborders, devstart, teststart = data["ioborders"], data["devstart"], data["teststart"]
+    borderpreds = torch.tensor(np.load(os.path.join(p, "borderpreds.npy"))).long()
+    bordergold = torch.tensor(ioborders[teststart:]).long()
+
+    pred_start, pred_end = torch.argmax(borderpreds, 2).split(1, dim=1)
+    gold_start, gold_end = bordergold.split(1, dim=1)
+    overlap_start = torch.max(pred_start, gold_start)
+    overlap_end = torch.min(pred_end, gold_end)
+    overlap = (overlap_end - overlap_start).float().clamp_min(0).sum()
+    expected = (gold_end - gold_start).float().clamp_min(1e-6).sum()
+    predicted = (pred_end - pred_start).float().clamp_min(1e-6).sum()
+    recall = overlap / expected
+    precision = overlap / predicted
+    f1 = 2 * recall * precision / (recall + precision).clamp_min(1e-6)
+    print("Dataset-wide F1, precision and recall:")
+    print(f1.item(), precision.item(), recall.item())
+
+    pred_start, pred_end = torch.argmax(borderpreds, 2).split(1, dim=1)
+    gold_start, gold_end = bordergold.split(1, dim=1)
+    overlap_start = torch.max(pred_start, gold_start)
+    overlap_end = torch.min(pred_end, gold_end)
+    overlap = (overlap_end - overlap_start).float().clamp_min(0)
+    recall = overlap / (gold_end - gold_start).float().clamp_min(1e-6)
+    precision = overlap / (pred_end - pred_start).float().clamp_min(1e-6)
+    f1 = 2 * recall * precision / (recall + precision).clamp_min(1e-6)
+    print((recall > 1).nonzero(), (precision > 1).nonzero())
+    recall = recall.mean()
+    precision = precision.mean()
+    f1 = f1.mean()
+    print("Averaged F1, precision and recall:")
+    print(f1.item(), precision.item(), recall.item())
+
+
 def run_borders(p="exp_bert_both_8",
                 qp="../../data/buboqa/data/processed_simplequestions_dataset/all.txt",
                 dp="../../data/buboqa/data/bertified_dataset.npz",
@@ -325,6 +361,7 @@ def run_borders(p="exp_bert_both_8",
     borderpreds = torch.tensor(np.load(os.path.join(p, "borderpreds.npy")))
     print(borderpreds.shape)
     data = np.load(dp)
+    print(data.keys())
     devstart, teststart = data["devstart"], data["teststart"]
     print(teststart)
     tokmat = data["tokmat"]
@@ -479,6 +516,7 @@ def run_borders(p="exp_bert_both_8",
 
 if __name__ == '__main__':
     # build_entity_bloom()
+    get_dsF1()
     q.argprun(run_borders)
     # test_index()
     # build_entity_index(testsearch=True)
