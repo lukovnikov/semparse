@@ -236,6 +236,36 @@ class SpanF1Borders(torch.nn.Module):
         return ret
 
 
+def test_spanf1_borders():
+    gold = torch.tensor([[2, 3],
+                         [2, 3],
+                         [2, 3],
+                         [2, 3],
+                         [1, 4],
+                         [1, 4],
+                         [1, 4],])
+    pred = torch.zeros(7, 2, 7)
+    pred[0, 0, 2] = 1           # 1, 1, 1
+    pred[0, 1, 3] = 1
+    pred[1, 0, 1] = 1           # 0, 0, 0
+    pred[1, 1, 2] = 1
+    pred[2, 0, 3] = 1           # 0, 0, 0
+    pred[2, 1, 4] = 1
+    pred[3, 0, 1] = 1           # 1/3, 1, 1/2
+    pred[3, 1, 4] = 1
+    pred[4, 0, 0] = 1           # 1/2, 1/3,
+    pred[4, 1, 2] = 1
+    pred[5, 0, 1] = 1           # 1, 1, 1
+    pred[5, 1, 4] = 1
+    pred[6, 0, 2] = 1           # 1, 1/3, 1/2
+    pred[6, 1, 3] = 1
+
+    print(gold)
+    print(pred)
+
+    m = SpanF1Borders(reduction=None)
+    y = m(pred, gold)
+    print(y)
 
 
 class InitL2Penalty(q.PenaltyGetter):
@@ -926,5 +956,6 @@ def run_both(lr=DEFAULT_LR,
 if __name__ == '__main__':
     # test_io_span_detector()
     # q.argprun(run_span_borders)
-    q.argprun(run_both)
+    test_spanf1_borders()
+    # q.argprun(run_both)
     # q.argprun(run_relations)

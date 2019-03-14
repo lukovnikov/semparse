@@ -400,6 +400,7 @@ def run_span_borders(lr=DEFAULT_LR,
                 wreg=DEFAULT_WREG,
                 initwreg=DEFAULT_INITWREG,
                 batsize=DEFAULT_BATSIZE,
+                evalbatsize=-1,
                 epochs=DEFAULT_EPOCHS,
                 smoothing=DEFAULT_SMOOTHING,
                 dim=200,
@@ -411,6 +412,8 @@ def run_span_borders(lr=DEFAULT_LR,
                 ):
     settings = locals().copy()
     print(locals())
+    if evalbatsize < -1:
+        evalbatsize = batsize
     if cuda:
         device = torch.device("cuda", gpu)
     else:
