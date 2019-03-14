@@ -779,6 +779,7 @@ def run_both(lr=DEFAULT_LR,
                 wreg=DEFAULT_WREG,
                 initwreg=DEFAULT_INITWREG,
                 batsize=DEFAULT_BATSIZE,
+                evalbatsize=None,
                 epochs=10,
                 smoothing=DEFAULT_SMOOTHING,
                 cuda=False,
@@ -797,6 +798,8 @@ def run_both(lr=DEFAULT_LR,
     settings = locals().copy()
     print(locals())
     tt = q.ticktock("script")
+    if evalbatsize is None:
+        evalbatsize = batsize
     tt.msg("running borders and rel classifier with BERT")
     if test:
         epochs=0
@@ -817,12 +820,12 @@ def run_both(lr=DEFAULT_LR,
     tt.tock("data loaded")
     tt.msg("Train/Dev/Test sizes: {} {} {}".format(len(trainds), len(devds), len(testds)))
     trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
-    devloader = DataLoader(devds, batch_size=batsize, shuffle=False)
-    testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
+    devloader = DataLoader(devds, batch_size=evalbatsize, shuffle=False)
+    testloader = DataLoader(testds, batch_size=evalbatsize, shuffle=False)
     evalds = TensorDataset(*testloader.dataset.tensors[:1])
     evalds_dev = TensorDataset(*devloader.dataset.tensors[:1])
-    evalloader = DataLoader(evalds, batch_size=batsize, shuffle=False)
-    evalloader_dev = DataLoader(evalds_dev, batch_size=batsize, shuffle=False)
+    evalloader = DataLoader(evalds, batch_size=evalbatsize, shuffle=False)
+    evalloader_dev = DataLoader(evalds_dev, batch_size=evalbatsize, shuffle=False)
     if test:
         evalloader = DataLoader(TensorDataset(*evalloader.dataset[:10]),
                                 batch_size=batsize, shuffle=False)
