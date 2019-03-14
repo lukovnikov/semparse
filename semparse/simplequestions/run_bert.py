@@ -956,6 +956,6 @@ def run_both(lr=DEFAULT_LR,
 if __name__ == '__main__':
     # test_io_span_detector()
     # q.argprun(run_span_borders)
-    test_spanf1_borders()
-    # q.argprun(run_both)
+    # test_spanf1_borders()
+    q.argprun(run_both)
     # q.argprun(run_relations)
