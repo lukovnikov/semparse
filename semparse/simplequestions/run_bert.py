@@ -779,7 +779,7 @@ def run_both(lr=DEFAULT_LR,
                 wreg=DEFAULT_WREG,
                 initwreg=DEFAULT_INITWREG,
                 batsize=DEFAULT_BATSIZE,
-                evalbatsize=None,
+                evalbatsize=-1,
                 epochs=10,
                 smoothing=DEFAULT_SMOOTHING,
                 cuda=False,
@@ -798,7 +798,7 @@ def run_both(lr=DEFAULT_LR,
     settings = locals().copy()
     print(locals())
     tt = q.ticktock("script")
-    if evalbatsize is None:
+    if evalbatsize < 0:
         evalbatsize = batsize
     tt.msg("running borders and rel classifier with BERT")
     if test:
