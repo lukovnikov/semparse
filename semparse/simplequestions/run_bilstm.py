@@ -409,10 +409,11 @@ def run_span_borders(lr=DEFAULT_LR,
                 gpu=0,
                 savep="exp_bilstm_span_borders_",
                 datafrac=1.,
+                vanillaemb=False,
                 ):
     settings = locals().copy()
     print(locals())
-    if evalbatsize < -1:
+    if evalbatsize < 0:
         evalbatsize = batsize
     if cuda:
         device = torch.device("cuda", gpu)
@@ -441,6 +442,8 @@ def run_span_borders(lr=DEFAULT_LR,
     bert = BertModel.from_pretrained("bert-base-uncased")
     embdim = bert.config.hidden_size
     emb = bert.embeddings.word_embeddings
+    if vanillaemb:
+        emb = torch.nn.Embedding(emb.weight.size(0), emb.weight.size(1))
     # inpD = tokenizer.vocab
     # q.WordEmb.masktoken = "[PAD]"
     # emb = q.WordEmb(embdim, worddic=inpD)
