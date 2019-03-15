@@ -552,7 +552,7 @@ def run_span_borders(lr=DEFAULT_LR,
         testpreds = q.eval_loop(spandet, evalloader_dev, device=device)
         testpreds = testpreds[0].cpu().detach().numpy()
         np.save(os.path.join(savedir, "borderpreds.dev.npy"), testpreds)
-        tt.tock("done")
+        tt.msg("saved in {}".format(savedir))
         tt.tock("done")
     # endregion
 
@@ -620,7 +620,7 @@ def run_relations(lr=DEFAULT_LR,
         device = torch.device("cpu")
     # region data
     tt = q.ticktock("script")
-    tt.msg("running relation classifier with BERT")
+    tt.msg("running relation classifier with BiLSTM")
     tt.tick("loading data")
     data = load_data(which="rel+borders", retrelD=True, datafrac=datafrac)
     trainds, devds, testds, relD = data
@@ -703,6 +703,7 @@ def run_relations(lr=DEFAULT_LR,
         testpreds = q.eval_loop(m, evalloader_dev, device=device)
         testpreds = testpreds[0].cpu().detach().numpy()
         np.save(os.path.join(savedir, "relpreds.dev.npy"), testpreds)
+        tt.msg("saved in {}".format(savedir))
         # save bert-tokenized questions
         # tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
         # with open(os.path.join(savedir, "testquestions.txt"), "w") as f:
