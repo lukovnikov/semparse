@@ -410,6 +410,7 @@ def run_span_borders(lr=DEFAULT_LR,
                 savep="exp_bilstm_span_borders_",
                 datafrac=1.,
                 vanillaemb=False,
+                embdim=300,
                 ):
     settings = locals().copy()
     print(locals())
@@ -440,10 +441,11 @@ def run_span_borders(lr=DEFAULT_LR,
     tt.tick("creating model")
     # tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     bert = BertModel.from_pretrained("bert-base-uncased")
-    embdim = bert.config.hidden_size
     emb = bert.embeddings.word_embeddings
     if vanillaemb:
-        emb = torch.nn.Embedding(emb.weight.size(0), emb.weight.size(1))
+        emb = torch.nn.Embedding(emb.weight.size(0), embdim)
+    else:
+        embdim = bert.config.hidden_size
     # inpD = tokenizer.vocab
     # q.WordEmb.masktoken = "[PAD]"
     # emb = q.WordEmb(embdim, worddic=inpD)
