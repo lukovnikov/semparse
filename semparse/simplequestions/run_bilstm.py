@@ -1,6 +1,7 @@
 import qelos as q
 import numpy as np
-from pytorch_pretrained_bert import BertModel, BertTokenizer, BertAdam
+from pytorch_pretrained_bert import BertModel, BertTokenizer, BertAdam, WarmupCosineSchedule, WarmupConstantSchedule, WarmupLinearSchedule, LRSchedule, \
+    WarmupCosineWithRestartsSchedule
 import torch
 from tabulate import tabulate
 from torch.utils.data import TensorDataset, DataLoader
@@ -395,6 +396,23 @@ def run_span_io(lr=DEFAULT_LR,
     # endregion
 
 
+
+def get_schedule(sched=None, warmup=-1, t_total=-1, cycles=None):
+    if sched == "none" or sched is None:
+        schedule = LRSchedule(warmup=warmup, t_total=t_total)
+    elif sched == "lin":
+        schedule = WarmupConstantSchedule(warmup=warmup, t_total=t_total)
+    elif sched == "ang":
+        schedule = WarmupLinearSchedule(warmup=warmup, t_total=t_total)
+    elif sched == "cos":
+        schedule = WarmupCosineSchedule(warmup=warmup, t_total=t_total, cycles=cycles)
+    elif sched == "cosrestart":
+        schedule = WarmupCosineWithRestartsSchedule(warmup=warmup, t_total=t_total, cycles=cycles)
+    else:
+        raise Exception("unknown schedule '{}'".format(sched))
+    return schedule
+
+
 def run_span_borders(lr=DEFAULT_LR,
                 dropout=.5,
                 wreg=DEFAULT_WREG,
@@ -411,6 +429,9 @@ def run_span_borders(lr=DEFAULT_LR,
                 datafrac=1.,
                 vanillaemb=False,
                 embdim=300,
+                sched="cos",
+                warmup=0.1,
+                cycles=0.5,
                 ):
     settings = locals().copy()
     print(locals())
@@ -443,6 +464,7 @@ def run_span_borders(lr=DEFAULT_LR,
     bert = BertModel.from_pretrained("bert-base-uncased")
     emb = bert.embeddings.word_embeddings
     if vanillaemb:
+        tt.msg("using vanilla emb of size {}".format(embdim))
         emb = torch.nn.Embedding(emb.weight.size(0), embdim)
     else:
         embdim = bert.config.hidden_size
@@ -456,7 +478,11 @@ def run_span_borders(lr=DEFAULT_LR,
     # endregion
 
     # region training
-    optim = torch.optim.Adam(spandet.parameters(), lr=lr, weight_decay=wreg)
+    totalsteps = len(trainloader) * epochs
+    params = spandet.parameters()
+    sched = get_schedule(sched, warmup=warmup, t_total=totalsteps, cycles=cycles)
+    optim = BertAdam(params, lr=lr, weight_decay=wreg, schedule=sched)
+    # optim = torch.optim.Adam(spandet.parameters(), lr=lr, weight_decay=wreg)
     losses = [q.SmoothedCELoss(smoothing=smoothing), SpanF1Borders(), q.SeqAccuracy()]
     xlosses = [q.SmoothedCELoss(smoothing=smoothing), SpanF1Borders(), q.SeqAccuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
