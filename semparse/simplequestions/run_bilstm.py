@@ -537,7 +537,7 @@ def run_span_borders(lr=DEFAULT_LR,
         os.mkdir(savep + str(i))
         savedir = savep + str(i)
         # save model
-        torch.save(spandet, open(os.path.join(savedir, "model.pt"), "wb"))
+        # torch.save(spandet, open(os.path.join(savedir, "model.pt"), "wb"))
         # save settings
         json.dump(settings, open(os.path.join(savedir, "settings.json"), "w"))
 
@@ -691,7 +691,7 @@ def run_relations(lr=DEFAULT_LR,
         os.mkdir(savep + str(i))
         savedir = savep + str(i)
         # save model
-        torch.save(m, open(os.path.join(savedir, "model.pt"), "wb"))
+        # torch.save(m, open(os.path.join(savedir, "model.pt"), "wb"))
         # save settings
         json.dump(settings, open(os.path.join(savedir, "settings.json"), "w"))
         # save relation dictionary
