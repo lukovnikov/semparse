@@ -413,6 +413,34 @@ def get_schedule(sched=None, warmup=-1, t_total=-1, cycles=None):
     return schedule
 
 
+def replace_entity_span(*dss):
+    print("replacing entity span")
+    berttok = BertTokenizer.from_pretrained("bert-base-uncased")
+    maskid = berttok.vocab["[MASK]"]
+    padid = berttok.vocab["[PAD]"]
+    outdss = []
+    for ds in dss:
+        tokmat, borders, rels = ds.tensors
+        outtokmat = torch.ones_like(tokmat) * padid
+        for i in range(len(tokmat)):
+            k = 0
+            for j in range(tokmat.size(1)):
+                if borders[i][0] == j:
+                    outtokmat[i, k] = maskid
+                    k += 1
+                elif borders[i][0] < j < borders[i][1]:
+                    pass
+                elif tokmat[i, j] == padid:
+                    break
+                else:
+                    outtokmat[i, k] = tokmat[i, j]
+                    k += 1
+        outds = torch.utils.data.TensorDataset(outtokmat, rels)
+        outdss.append(outds)
+    print("replaced entity span")
+    return outdss
+
+
 def run_span_borders(lr=DEFAULT_LR,
                 dropout=.5,
                 wreg=DEFAULT_WREG,
@@ -530,11 +558,10 @@ def run_span_borders(lr=DEFAULT_LR,
 
 
 class RelationClassifier(torch.nn.Module):
-    def __init__(self, bert, relD, dropout=0., extra=False, mask_entity_mention=True, **kw):
+    def __init__(self, emb=None, bilstm=None, dim=-1, relD=None, dropout=0., extra=False, **kw):
         super(RelationClassifier, self).__init__(**kw)
-        self.bert = bert
-        self.mask_entity_mention = mask_entity_mention
-        dim = self.bert.config.hidden_size
+        self.bilstm = bilstm
+        self.emb = emb
         if extra:
             self.lin = torch.nn.Linear(dim, dim)
             self.act = torch.nn.Tanh()
@@ -545,14 +572,10 @@ class RelationClassifier(torch.nn.Module):
         self.dropout = torch.nn.Dropout(p=dropout)
         # self.actout = torch.nn.Sigmoid()
 
-    def forward(self, x, spanio):       # x: (batsize, seqlen) ints
+    def forward(self, x):       # x: (batsize, seqlen) ints
+        xemb = self.emb(x)
         mask = (x != 0)
-        if self.mask_entity_mention:
-            # spanio uses 0/1/2 for mask/false/true
-            spanmask = (spanio == 2)
-            mask = mask & (~spanmask)
-        mask = mask.long()
-        _, a = self.bert(x, attention_mask=mask, output_all_encoded_layers=False)
+        a = self.bilstm(xemb, mask=mask)
         a = self.dropout(a)
         if self.extra:
             a = self.act(self.lin(a))
@@ -570,12 +593,17 @@ def run_relations(lr=DEFAULT_LR,
                 cuda=False,
                 gpu=0,
                 balanced=False,
-                unmaskmention=False,
-                warmup=-1.,
-                sched="ang",
-                savep="exp_bert_rels_",
+                maskentity=False,
+                savep="exp_bilstm_rels_",
                 test=False,
                 datafrac=1.,
+                vanillaemb=False,
+                embdim=300,
+                dim=300,
+                numlayers=2,
+                warmup=0.01,
+                cycles=0.5,
+                sched="cos",
                 ):
     settings = locals().copy()
     if test:
@@ -589,15 +617,22 @@ def run_relations(lr=DEFAULT_LR,
     tt = q.ticktock("script")
     tt.msg("running relation classifier with BERT")
     tt.tick("loading data")
-    data = load_data(which="rel+io", retrelD=True)
+    data = load_data(which="rel+borders", retrelD=True, datafrac=datafrac)
     trainds, devds, testds, relD = data
+    if maskentity:
+        trainds, devds, testds = replace_entity_span(trainds, devds, testds)
+    else:
+        trainds, devds, testds = [TensorDataset(ds.tensors[0], ds.tensors[2]) for ds in [trainds, devds, testds]]
     tt.tock("data loaded")
     tt.msg("Train/Dev/Test sizes: {} {} {}".format(len(trainds), len(devds), len(testds)))
     trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
     devloader = DataLoader(devds, batch_size=batsize, shuffle=False)
     testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
-    evalds = TensorDataset(*testloader.dataset.tensors[:-1])
+    evalds = TensorDataset(*testloader.dataset.tensors[:1])
     evalloader = DataLoader(evalds, batch_size=batsize, shuffle=False)
+    evalds_dev = TensorDataset(*devloader.dataset.tensors[:1])
+    evalloader_dev = DataLoader(evalds_dev, batch_size=batsize, shuffle=False)
+
     if test:
         evalloader = DataLoader(TensorDataset(*evalloader.dataset[:10]),
                                 batch_size=batsize, shuffle=False)
@@ -606,19 +641,26 @@ def run_relations(lr=DEFAULT_LR,
     # endregion
 
     # region model
-    tt.tick("loading BERT")
+    tt.tick("making model")
     bert = BertModel.from_pretrained("bert-base-uncased")
-    m = RelationClassifier(bert, relD, dropout=dropout, mask_entity_mention=not unmaskmention)
+    emb = bert.embeddings.word_embeddings
+    if vanillaemb:
+        tt.msg("using vanilla emb of size {}".format(embdim))
+        emb = torch.nn.Embedding(emb.weight.size(0), embdim)
+    else:
+        embdim = bert.config.hidden_size
+    bilstm = q.rnn.LSTMEncoder(embdim, *([dim] * numlayers), bidir=True, dropout_in_shared=dropout)
+    m = RelationClassifier(emb=emb, bilstm=bilstm, dim=dim, relD=relD, dropout=dropout)
     m.to(device)
-    tt.tock("loaded BERT")
+    tt.tock("made model")
     # endregion
 
     # region training
-    totalsteps = 20    #len(trainloader) * epochs
-    initl2penalty = InitL2Penalty(bert, factor=q.hyperparam(initwreg))
-    optim = BertAdam(m.parameters(), lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps,
-                     schedule=schedmap[sched])
-    losses = [q.SmoothedCELoss(smoothing=smoothing), initl2penalty, q.Accuracy()]
+    totalsteps = len(trainloader) * epochs
+    params = m.parameters()
+    sched = get_schedule(sched, warmup=warmup, t_total=totalsteps, cycles=cycles)
+    optim = BertAdam(params, lr=lr, weight_decay=wreg, schedule=sched)
+    losses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
     xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
     devlosses = [q.LossWrapper(l) for l in xlosses]
@@ -652,7 +694,10 @@ def run_relations(lr=DEFAULT_LR,
         # save test predictions
         testpreds = q.eval_loop(m, evalloader, device=device)
         testpreds = testpreds[0].cpu().detach().numpy()
-        np.save(os.path.join(savedir, "testpredictions.npy"), testpreds)
+        np.save(os.path.join(savedir, "relpreds.test.npy"), testpreds)
+        testpreds = q.eval_loop(m, evalloader_dev, device=device)
+        testpreds = testpreds[0].cpu().detach().numpy()
+        np.save(os.path.join(savedir, "relpreds.dev.npy"), testpreds)
         # save bert-tokenized questions
         # tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
         # with open(os.path.join(savedir, "testquestions.txt"), "w") as f:
@@ -671,3 +716,4 @@ if __name__ == '__main__':
     # test_io_span_detector()
     # q.argprun(run_span_io)
     q.argprun(run_span_borders)
+    # q.argprun(run_relations)
