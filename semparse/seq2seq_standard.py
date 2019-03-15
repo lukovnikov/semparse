@@ -146,7 +146,7 @@ class TreeAccuracyLambdaDFPar(torch.nn.Module):
         return samesum
 
 
-def run_normal(lr=0.01,
+def run_normal(lr=0.0005,
                gradclip=5.,
                batsize=20,
                epochs=80,
@@ -155,7 +155,7 @@ def run_normal(lr=0.01,
                numlayer=1,
                cuda=False,
                gpu=0,
-               wreg=1e-8,
+               wreg=1e-6,
                dropout=0.5,
                smoothing=0.,
                goldsmoothing=-0.1,
@@ -224,7 +224,7 @@ def run_normal(lr=0.01,
     elemacc = q.loss.SeqElemAccuracy(ignore_index=0)
     treeacc = TreeAccuracyLambdaDFPar(flD=flD)
     # optim
-    optim = torch.optim.RMSprop(train_encdec.parameters(), lr=lr, alpha=0.95, weight_decay=wreg)
+    optim = torch.optim.Adam(train_encdec.parameters(), lr=lr, weight_decay=wreg)
     clipgradnorm = lambda: torch.nn.utils.clip_grad_value_(train_encdec.parameters(), clip_value=gradclip)
     # lööps
     batchloop = partial(q.train_batch, on_before_optim_step=[clipgradnorm])
@@ -360,4 +360,4 @@ def run_gatedtree(lr=0.01,
 
 
 if __name__ == '__main__':
-    q.argprun(run_gatedtree)
+    q.argprun(run_normal)
