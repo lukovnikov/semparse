@@ -606,8 +606,11 @@ def run_relations(lr=DEFAULT_LR,
                 warmup=0.01,
                 cycles=0.5,
                 sched="cos",
+                evalbatsize=-1,
                 ):
     settings = locals().copy()
+    if evalbatsize < 0:
+        evalbatsize = batsize
     if test:
         epochs=0
     print(locals())
@@ -628,12 +631,12 @@ def run_relations(lr=DEFAULT_LR,
     tt.tock("data loaded")
     tt.msg("Train/Dev/Test sizes: {} {} {}".format(len(trainds), len(devds), len(testds)))
     trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
-    devloader = DataLoader(devds, batch_size=batsize, shuffle=False)
-    testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
+    devloader = DataLoader(devds, batch_size=evalbatsize, shuffle=False)
+    testloader = DataLoader(testds, batch_size=evalbatsize, shuffle=False)
     evalds = TensorDataset(*testloader.dataset.tensors[:1])
-    evalloader = DataLoader(evalds, batch_size=batsize, shuffle=False)
+    evalloader = DataLoader(evalds, batch_size=evalbatsize, shuffle=False)
     evalds_dev = TensorDataset(*devloader.dataset.tensors[:1])
-    evalloader_dev = DataLoader(evalds_dev, batch_size=batsize, shuffle=False)
+    evalloader_dev = DataLoader(evalds_dev, batch_size=evalbatsize, shuffle=False)
 
     if test:
         evalloader = DataLoader(TensorDataset(*evalloader.dataset[:10]),
