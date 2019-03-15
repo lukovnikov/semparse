@@ -442,7 +442,7 @@ def replace_entity_span(*dss):
 
 
 def run_span_borders(lr=DEFAULT_LR,
-                dropout=.5,
+                dropout=.3,
                 wreg=DEFAULT_WREG,
                 initwreg=DEFAULT_INITWREG,
                 batsize=DEFAULT_BATSIZE,
@@ -562,6 +562,7 @@ class RelationClassifier(torch.nn.Module):
         super(RelationClassifier, self).__init__(**kw)
         self.bilstm = bilstm
         self.emb = emb
+        self.dim = dim
         if extra:
             self.lin = torch.nn.Linear(dim, dim)
             self.act = torch.nn.Tanh()
@@ -575,7 +576,8 @@ class RelationClassifier(torch.nn.Module):
     def forward(self, x):       # x: (batsize, seqlen) ints
         xemb = self.emb(x)
         mask = (x != 0)
-        a = self.bilstm(xemb, mask=mask)
+        _, a = self.bilstm(xemb, mask=mask, ret_states=True)
+        a = a.view(a.size(0), -1)
         a = self.dropout(a)
         if self.extra:
             a = self.act(self.lin(a))
@@ -584,7 +586,7 @@ class RelationClassifier(torch.nn.Module):
 
 
 def run_relations(lr=DEFAULT_LR,
-                dropout=.5,
+                dropout=.3,
                 wreg=DEFAULT_WREG,
                 initwreg=DEFAULT_INITWREG,
                 batsize=DEFAULT_BATSIZE,
@@ -650,7 +652,7 @@ def run_relations(lr=DEFAULT_LR,
     else:
         embdim = bert.config.hidden_size
     bilstm = q.rnn.LSTMEncoder(embdim, *([dim] * numlayers), bidir=True, dropout_in_shared=dropout)
-    m = RelationClassifier(emb=emb, bilstm=bilstm, dim=dim, relD=relD, dropout=dropout)
+    m = RelationClassifier(emb=emb, bilstm=bilstm, dim=dim*2, relD=relD, dropout=dropout)
     m.to(device)
     tt.tock("made model")
     # endregion
