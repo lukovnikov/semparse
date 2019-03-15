@@ -558,7 +558,7 @@ def run_span_borders(lr=DEFAULT_LR,
 
 
 class RelationClassifier(torch.nn.Module):
-    def __init__(self, emb=None, bilstm=None, dim=-1, relD=None, dropout=0., extra=False, **kw):
+    def __init__(self, emb=None, bilstm=None, dim=-1, relD=None, dropout=0., extra=True, **kw):
         super(RelationClassifier, self).__init__(**kw)
         self.bilstm = bilstm
         self.emb = emb

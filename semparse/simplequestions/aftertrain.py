@@ -316,13 +316,22 @@ def run(indexp="../../data/buboqa/indexes/",
 
 def get_dsF1(p="exp_bert_both_11",
              dp="../../data/buboqa/data/bertified_dataset.npz"):
+    print(p)
     data = np.load(dp)
     ioborders, devstart, teststart = data["ioborders"], data["devstart"], data["teststart"]
-    borderpreds = torch.tensor(np.load(os.path.join(p, "borderpreds.dev.npy"))).long()
+    tokmat, unbertmat = data["tokmat"], data["unbertmat"]
+    borderpreds = torch.tensor(np.load(os.path.join(p, "borderpreds.dev.npy")))
     bordergold = torch.tensor(ioborders[devstart:teststart]).long()
+    unbertmat = torch.tensor(unbertmat[devstart:teststart]).long()
+    tokmat = torch.tensor(tokmat[devstart:teststart]).long()
+    mask_test = (tokmat != 0).float()
+    borderprobs = torch.nn.Softmax(-1)(borderpreds + torch.log(mask_test.unsqueeze(1)))
+    word_border_probs = torch.zeros(len(unbertmat), 2, borderpreds.size(2), dtype=torch.float)
+    word_border_probs.scatter_add_(2, unbertmat.unsqueeze(1).repeat(1, 2, 1), borderprobs)
+    word_border_golds = unbertmat.gather(1, bordergold)
 
-    pred_start, pred_end = torch.argmax(borderpreds, 2).split(1, dim=1)
-    gold_start, gold_end = bordergold.split(1, dim=1)
+    pred_start, pred_end = torch.argmax(word_border_probs, 2).split(1, dim=1)
+    gold_start, gold_end = word_border_golds.split(1, dim=1)
     overlap_start = torch.max(pred_start, gold_start)
     overlap_end = torch.min(pred_end, gold_end)
     overlap = (overlap_end - overlap_start).float().clamp_min(0).sum()
@@ -334,8 +343,8 @@ def get_dsF1(p="exp_bert_both_11",
     print("Dataset-wide F1, precision and recall:")
     print(f1.item(), precision.item(), recall.item())
 
-    pred_start, pred_end = torch.argmax(borderpreds, 2).split(1, dim=1)
-    gold_start, gold_end = bordergold.split(1, dim=1)
+    pred_start, pred_end = torch.argmax(word_border_probs, 2).split(1, dim=1)
+    gold_start, gold_end = word_border_golds.split(1, dim=1)
     overlap_start = torch.max(pred_start, gold_start)
     overlap_end = torch.min(pred_end, gold_end)
     overlap = (overlap_end - overlap_start).float().clamp_min(0)
