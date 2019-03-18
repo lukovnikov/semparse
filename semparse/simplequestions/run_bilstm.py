@@ -606,7 +606,7 @@ def run_relations(lr=DEFAULT_LR,
                 cycles=0.5,
                 sched="cos",
                 evalbatsize=-1,
-                classweighted=True,
+                classweighted=False,
                 ):
     print(locals())
     settings = locals().copy()
