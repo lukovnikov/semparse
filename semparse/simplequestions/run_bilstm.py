@@ -1,7 +1,6 @@
 import qelos as q
 import numpy as np
-from pytorch_pretrained_bert import BertModel, BertTokenizer, BertAdam, WarmupCosineSchedule, WarmupConstantSchedule, WarmupLinearSchedule, LRSchedule, \
-    WarmupCosineWithRestartsSchedule
+from pytorch_pretrained_bert import BertModel, BertTokenizer, BertAdam
 import torch
 from tabulate import tabulate
 from torch.utils.data import TensorDataset, DataLoader
@@ -664,7 +663,8 @@ def run_relations(lr=DEFAULT_LR,
     totalsteps = len(trainloader) * epochs
     params = m.parameters()
     sched = get_schedule(sched, warmup=warmup, t_total=totalsteps, cycles=cycles)
-    optim = BertAdam(params, lr=lr, weight_decay=wreg, schedule=sched)
+    optim = BertAdam(params, lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps, schedule=schedmap[sched])
+    # optim = BertAdam(params, lr=lr, weight_decay=wreg, schedule=sched)
     losses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
     xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
