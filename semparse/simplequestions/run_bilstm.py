@@ -606,6 +606,7 @@ def run_relations(lr=DEFAULT_LR,
                 cycles=0.5,
                 sched="cos",
                 evalbatsize=-1,
+                classweighted=False,
                 ):
     print(locals())
     settings = locals().copy()
@@ -627,6 +628,9 @@ def run_relations(lr=DEFAULT_LR,
         trainds, devds, testds = replace_entity_span(trainds, devds, testds)
     else:
         trainds, devds, testds = [TensorDataset(ds.tensors[0], ds.tensors[2]) for ds in [trainds, devds, testds]]
+    relcounts = torch.zeros(max(relD.values()) + 1)
+    trainrelcounts = torch.bincount(trainds.tensors[1])
+    relcounts[:len(trainrelcounts)] += trainrelcounts.float()
     tt.tock("data loaded")
     tt.msg("Train/Dev/Test sizes: {} {} {}".format(len(trainds), len(devds), len(testds)))
     trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
@@ -665,7 +669,9 @@ def run_relations(lr=DEFAULT_LR,
     sched = get_schedule(sched, warmup=warmup, t_total=totalsteps, cycles=cycles)
     # optim = BertAdam(params, lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps, schedule=schedmap[sched])
     optim = BertAdam(params, lr=lr, weight_decay=wreg, schedule=sched)
-    losses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
+    losses = [q.SmoothedCELoss(smoothing=smoothing,
+                               weight=1/trainrelcounts.clamp_min(1e-6) if classweighted else None),
+              q.Accuracy()]
     xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
     devlosses = [q.LossWrapper(l) for l in xlosses]
