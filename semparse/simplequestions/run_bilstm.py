@@ -606,7 +606,7 @@ def run_relations(lr=DEFAULT_LR,
                 cycles=0.5,
                 sched="cos",
                 evalbatsize=-1,
-                classweighted=False,
+                classweighted=True,
                 ):
     print(locals())
     settings = locals().copy()
@@ -670,7 +670,7 @@ def run_relations(lr=DEFAULT_LR,
     # optim = BertAdam(params, lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps, schedule=schedmap[sched])
     optim = BertAdam(params, lr=lr, weight_decay=wreg, schedule=sched)
     losses = [q.SmoothedCELoss(smoothing=smoothing,
-                               weight=1/trainrelcounts.clamp_min(1e-6) if classweighted else None),
+                               weight=1/relcounts.clamp_min(1e-6) if classweighted else None),
               q.Accuracy()]
     xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
