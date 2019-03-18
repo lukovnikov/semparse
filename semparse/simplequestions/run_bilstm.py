@@ -662,7 +662,7 @@ def run_relations(lr=DEFAULT_LR,
     # region training
     totalsteps = len(trainloader) * epochs
     params = m.parameters()
-    sched = get_schedule(sched, warmup=warmup, t_total=totalsteps, cycles=cycles)
+    # sched = get_schedule(sched, warmup=warmup, t_total=totalsteps, cycles=cycles)
     optim = BertAdam(params, lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps, schedule=schedmap[sched])
     # optim = BertAdam(params, lr=lr, weight_decay=wreg, schedule=sched)
     losses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
