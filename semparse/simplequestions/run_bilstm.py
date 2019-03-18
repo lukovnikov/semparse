@@ -575,12 +575,12 @@ class RelationClassifier(torch.nn.Module):
     def forward(self, x):       # x: (batsize, seqlen) ints
         xemb = self.emb(x)
         mask = (x != 0)
-        xemb_, unsorter = q.seq_pack(xemb, mask, ret_sorter=False)
-        # _, a = self.bilstm(xemb_, mask=mask, ret_states=True)
-        _, (hn, cn) = self.bilstm(xemb_)      # (numlayers x numdirs, batsize, dim)
-        hn = hn.view(self.bilstm.num_layers, 2, x.size(0), -1)
-        hn = hn[-1, :, :, :].transpose(0, 1).contiguous().view(x.size(0), -1)
-        a = hn[unsorter]
+        # xemb_, unsorter = q.seq_pack(xemb, mask, ret_sorter=False)
+        _, a = self.bilstm(xemb, mask=mask, ret_states=True)
+        # _, (hn, cn) = self.bilstm(xemb_)      # (numlayers x numdirs, batsize, dim)
+        # hn = hn.view(self.bilstm.num_layers, 2, x.size(0), -1)
+        # hn = hn[-1, :, :, :].transpose(0, 1).contiguous().view(x.size(0), -1)
+        # a = hn[unsorter]
         a = a.view(a.size(0), -1)
         if self.extra:
             a = self.act(self.lin(a))
@@ -662,8 +662,8 @@ def run_relations(lr=DEFAULT_LR,
         emb = torch.nn.Embedding(emb.weight.size(0), embdim)
     else:
         embdim = bert.config.hidden_size
-    # bilstm = q.rnn.LSTMEncoder(embdim, *([dim] * numlayers), bidir=True, dropout_in_shared=dropout)
-    bilstm = torch.nn.LSTM(embdim, dim, batch_first=True, num_layers=numlayers, bidirectional=True, dropout=dropout)
+    bilstm = q.rnn.LSTMEncoder(embdim, *([dim] * numlayers), bidir=True, dropout_in=dropout)
+    # bilstm = torch.nn.LSTM(embdim, dim, batch_first=True, num_layers=numlayers, bidirectional=True, dropout=dropout)
     m = RelationClassifier(emb=emb, bilstm=bilstm, dim=dim*2, relD=relD, dropout=dropout)
     m.to(device)
     tt.tock("made model")
