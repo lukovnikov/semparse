@@ -607,12 +607,12 @@ def run_relations(lr=DEFAULT_LR,
                 sched="cos",
                 evalbatsize=-1,
                 ):
+    print(locals())
     settings = locals().copy()
     if evalbatsize < 0:
         evalbatsize = batsize
     if test:
         epochs=0
-    print(locals())
     if cuda:
         device = torch.device("cuda", gpu)
     else:
