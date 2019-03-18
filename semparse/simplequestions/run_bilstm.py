@@ -1,6 +1,7 @@
 import qelos as q
 import numpy as np
-from pytorch_pretrained_bert import BertModel, BertTokenizer, BertAdam
+from pytorch_pretrained_bert import BertModel, BertTokenizer
+from pytorch_pretrained_bert.optimization import *
 import torch
 from tabulate import tabulate
 from torch.utils.data import TensorDataset, DataLoader
@@ -393,7 +394,6 @@ def run_span_io(lr=DEFAULT_LR,
     print(testres)
     tt.tock("tested")
     # endregion
-
 
 
 def get_schedule(sched=None, warmup=-1, t_total=-1, cycles=None):
