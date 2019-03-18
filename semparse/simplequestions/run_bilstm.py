@@ -580,7 +580,7 @@ class RelationClassifier(torch.nn.Module):
         _, (hn, cn) = self.bilstm(xemb_)      # (numlayers x numdirs, batsize, dim)
         hn = hn.view(self.bilstm.num_layers, 2, x.size(0), -1)
         hn = hn[-1, :, :, :].transpose(0, 1).contiguous().view(x.size(0), -1)
-        a = hn
+        a = hn[unsorter]
         a = a.view(a.size(0), -1)
         if self.extra:
             a = self.act(self.lin(a))
