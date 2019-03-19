@@ -274,7 +274,7 @@ class BorderSpanDetector(torch.nn.Module):
         self.outlen = None
 
     def forward(self, x):       # x: (batsize, seqlen) ints
-        xemb = self.emb(x)
+        xemb, _ = self.emb(x)
         mask = (x != 0).float()
         a = self.bilstm(xemb, mask=mask)
         a = self.dropout(a)
