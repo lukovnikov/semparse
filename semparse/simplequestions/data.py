@@ -6,10 +6,11 @@ from pytorch_pretrained_bert import BertTokenizer
 from tabulate import tabulate
 from unidecode import unidecode
 from collections import OrderedDict
+from tqdm import tqdm
 
 
 def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
-              outp="../../data/buboqa/data/bertified_dataset"):
+              outp="../../data/buboqa/data/bertified_dataset_new"):
     tt = q.ticktock("dataloader")
     tt.tick("loading files")
     trainlines = open(p+"train.txt", encoding="utf8").readlines()
@@ -40,6 +41,46 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
     stt.msg("{}/{} unkrel cases in test".format(len(unkrels), len(testlines)))
 
     # print(trainlines[3])
+
+    tt.tick("creating word matrix")
+    sm = q.StringMatrix()
+    sm.tokenize = lambda x: x.split()
+    wordborders = np.zeros((len(trainlines) + len(devlines) + len(testlines), 2), dtype="int64")
+
+    def do_line(line_, i_):
+        try:
+            sm.add(line_[5])
+            previo = "O"
+            ioline = line_[6].replace("'", "").replace("[", "").replace("]", "")
+            io = ioline.split() + ["O"]
+            k = 0
+            for j in range(len(io)):
+                if io[j] != previo:
+                    if k > 1:
+                        print(line_)
+                    wordborders[i_, k] = j
+                    previo = io[j]
+                    k += 1
+        except Exception as e:
+            print(e)
+            print(line_)
+
+    i = 0
+    for line in tqdm(trainlines):
+        do_line(line, i)
+        i += 1
+    word_devstart = i
+    for line in tqdm(devlines):
+        do_line(line, i)
+        i += 1
+    word_teststart = i
+    for line in tqdm(testlines):
+        do_line(line, i)
+
+    sm.finalize()
+    print(len(sm.D))
+    print(sm[0])
+    tt.tock("created word matrix")
 
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     def bertify(line):
@@ -96,6 +137,8 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
     devstart = len(bert_tokens_train)
     teststart = len(bert_tokens_train) + len(bert_tokens_dev)
 
+    assert(word_devstart == devstart, word_teststart == teststart)
+
     print(tokmat.shape)
     tt.tock("token matrix created")
 
@@ -148,7 +191,8 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
     relcounts = np.array(relcounts).astype("int32")
     tt.tock("done relations")
 
-    np.savez(outp, tokmat=tokmat, iomat=iomat, ioborders=iobordersmat,
+    np.savez(outp, wordmat=sm.matrix, worddic=sm.D, wordborders=wordborders,
+             tokmat=tokmat, iomat=iomat, tokborders=iobordersmat,
              rels=rels, relD=relD, relcounts=relcounts, unbertmat=unbertmat,
              devstart=devstart, teststart=teststart)
 

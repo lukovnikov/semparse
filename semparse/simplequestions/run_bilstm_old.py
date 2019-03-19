@@ -20,11 +20,48 @@ DEFAULT_WREG=0.01
 DEFAULT_SMOOTHING=0.
 
 
-def load_data(p="../../data/buboqa/data/bertified_dataset_new.npz",
-              which="wordmat,borders,rels",
+def load_word_mat(origp="../../data/buboqa/data/processed_simplequestions_dataset/"):
+    outp = os.path.join(origp, "all.pkl")
+    generate = True
+    if generate:
+        trainp = os.path.join(origp, "train.txt")
+        validp = os.path.join(origp, "valid.txt")
+        testp = os.path.join(origp, "test.txt")
+        trainlines = open(trainp, encoding="utf8").readlines()
+        validlines = open(validp, encoding="utf8").readlines()
+        testlines = open(testp, encoding="utf8").readlines()
+        sm = q.StringMatrix()
+        sm.tokenize = lambda x: x.split()
+
+        i = 0
+        for line in tqdm(trainlines):
+            sm.add(line.split("\t")[5])
+            i += 1
+        devstart = i
+        for line in tqdm(validlines):
+            sm.add(line.split("\t")[5])
+            i += 1
+        teststart = i
+        for line in tqdm(testlines):
+            sm.add(line.split("\t")[5])
+
+        sm.finalize()
+        print(len(sm.D))
+        print(sm[0])
+        pkl.dump((sm.matrix, sm.D, (devstart, teststart)), open(outp, "wb"))
+    else:
+        wordmat, wordD, (devstart, teststart) = pkl.load(open(outp, "rb"))
+        return wordmat, wordD, (devstart, teststart)
+
+
+
+def load_data(p="../../data/buboqa/data/bertified_dataset.npz",
+              which="span/io",
               retrelD = False,
               retrelcounts = False,
-              datafrac=1.,):
+              rettokD = False,
+              datafrac=1.,
+              wordlevel=False):
     """
     :param p:       where the stored matrices are
     :param which:   which data to include in output datasets
@@ -36,21 +73,68 @@ def load_data(p="../../data/buboqa/data/bertified_dataset_new.npz",
     :return:
     """
     tt = q.ticktock("dataloader")
+    if wordlevel:
+        tt.tick("loading original data word-level stringmatrix")
+        wordmat, wordD, (word_devstart, word_teststart) = load_word_mat()
+        twordmat, vwordmat, xwordmat = wordmat[:word_devstart], wordmat[word_devstart:word_teststart], wordmat[word_teststart:]
+        tt.tock("loaded stringmatrix")
     tt.tick("loading saved np mats")
     data = np.load(p)
     print(data.keys())
     relD = data["relD"].item()
-    worddic = data["worddic"].item()
     revrelD = {v: k for k, v in relD.items()}
     devstart = data["devstart"]
     teststart = data["teststart"]
+    if wordlevel:
+        assert(devstart == word_devstart)
+        assert(teststart == word_teststart)
     tt.tock("mats loaded")
+    tt.tick("loading BERT tokenizer")
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    tt.tock("done")
+
+    if wordlevel:
+        tokD = wordD
+    else:
+        tokD = tokenizer.vocab
+
+    def pp(i):
+        tokrow = data["tokmat"][i]
+        iorow = [xe - 1 for xe in data["iomat"][i] if xe != 0]
+        ioborderrow = data["ioborders"][i]
+        rel_i = data["rels"][i]
+        tokrow = tokenizer.convert_ids_to_tokens([tok for tok in tokrow if tok != 0])
+        # print(" ".join(tokrow))
+        print(tabulate([range(len(tokrow)), tokrow, iorow]))
+        print(ioborderrow)
+        print(revrelD[rel_i])
+    # tt.tick("printing some examples")
+    # for k in range(10):
+    #     print("\nExample {}".format(k))
+    #     pp(k)
+    # tt.tock("printed some examples")
 
     # datasets
     tt.tick("making datasets")
-    selection = which.split(",")
+    if which == "span/io":
+        selection = ["tokmat", "iomat"]
+    elif which == "span/borders":
+        selection = ["tokmat", "ioborders"]
+    elif which == "rel+io":
+        selection = ["tokmat", "iomat", "rels"]
+    elif which == "rel+borders":
+        selection = ["tokmat", "ioborders", "rels"]
+    elif which == "all":
+        selection = ["tokmat", "iomat", "ioborders", "rels"]
+    else:
+        raise q.SumTingWongException("unknown which mode: {}".format(which))
 
-    selected = [torch.tensor(data[sel]).long() for sel in selection]
+    if wordlevel:
+        tokmat = wordmat
+    else:
+        tokmat = data["tokmat"]
+
+    selected = [torch.tensor(data[sel] if sel != "tokmat" else tokmat).long() for sel in selection]
     tselected = [sel[:devstart] for sel in selected]
     vselected = [sel[devstart:teststart] for sel in selected]
     xselected = [sel[teststart:] for sel in selected]
@@ -97,9 +181,11 @@ def load_data(p="../../data/buboqa/data/bertified_dataset_new.npz",
     devdata = TensorDataset(*vselected)
     testdata = TensorDataset(*xselected)
 
-    ret = (traindata, devdata, testdata, worddic)
+    ret = (traindata, devdata, testdata)
     if retrelD:
         ret += (relD,)
+    if rettokD:
+        ret += (tokD,)
     if retrelcounts:
         ret += data["relcounts"]
     tt.tock("made datasets")
@@ -205,7 +291,6 @@ class SpanF1Borders(torch.nn.Module):
             ret = f1
         return ret
 
-
 class InitL2Penalty(q.PenaltyGetter):
     def __init__(self, model, factor=1., reduction="mean"):
         super(InitL2Penalty, self).__init__(model, factor=factor, reduction=reduction)
@@ -224,6 +309,7 @@ class InitL2Penalty(q.PenaltyGetter):
         else:
             ret = 0
         return ret
+
 
 
 class IOSpanDetector(torch.nn.Module):
@@ -297,6 +383,74 @@ schedmap = {
     "lin": "warmup_constant",
     "cos": "warmup_cosine"
 }
+
+
+def run_span_io(lr=DEFAULT_LR,
+                dropout=.5,
+                wreg=DEFAULT_WREG,
+                batsize=DEFAULT_BATSIZE,
+                epochs=DEFAULT_EPOCHS,
+                cuda=False,
+                gpu=0,
+                balanced=False,
+                warmup=-1.,
+                sched="ang",  # "lin", "cos"
+                ):
+    settings = locals().copy()
+    print(locals())
+    if cuda:
+        device = torch.device("cuda", gpu)
+    else:
+        device = torch.device("cpu")
+    # region data
+    tt = q.ticktock("script")
+    tt.msg("running span io with BERT")
+    tt.tick("loading data")
+    data = load_data(which="span/io")
+    trainds, devds, testds = data
+    tt.tock("data loaded")
+    tt.msg("Train/Dev/Test sizes: {} {} {}".format(len(trainds), len(devds), len(testds)))
+    trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
+    devloader = DataLoader(devds, batch_size=batsize, shuffle=False)
+    testloader = DataLoader(testds, batch_size=batsize, shuffle=False)
+    # compute balancing hyperparam for BCELoss
+    trainios = trainds.tensors[1]
+    numberpos = (trainios == 2).float().sum()
+    numberneg = (trainios == 1).float().sum()
+    if balanced:
+        pos_weight = (numberneg/numberpos)
+    else:
+        pos_weight = None
+    # endregion
+
+    # region model
+    tt.tick("loading BERT")
+    bert = BertModel.from_pretrained("bert-base-uncased")
+    spandet = IOSpanDetector(bert, dropout=dropout)
+    spandet.to(device)
+    tt.tock("loaded BERT")
+    # endregion
+
+    # region training
+    totalsteps = len(trainloader) * epochs
+    optim = BertAdam(spandet.parameters(), lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps, schedule=schedmap[sched])
+    losses = [AutomaskedBCELoss(pos_weight=pos_weight), AutomaskedBinarySeqAccuracy()]
+    trainlosses = [q.LossWrapper(l) for l in losses]
+    devlosses = [q.LossWrapper(l) for l in losses]
+    testlosses = [q.LossWrapper(l) for l in losses]
+    trainloop = partial(q.train_epoch, model=spandet, dataloader=trainloader, optim=optim, losses=trainlosses, device=device)
+    devloop = partial(q.test_epoch, model=spandet, dataloader=devloader, losses=devlosses, device=device)
+    testloop = partial(q.test_epoch, model=spandet, dataloader=testloader, losses=testlosses, device=device)
+
+    tt.tick("training")
+    q.run_training(trainloop, devloop, max_epochs=epochs)
+    tt.tock("done training")
+
+    tt.tick("testing")
+    testres = testloop()
+    print(testres)
+    tt.tock("tested")
+    # endregion
 
 
 def get_schedule(sched=None, warmup=-1, t_total=-1, cycles=None):
@@ -476,7 +630,7 @@ class RelationClassifier(torch.nn.Module):
         # self.actout = torch.nn.Sigmoid()
 
     def forward(self, x):       # x: (batsize, seqlen) ints
-        xemb, _ = self.emb(x)
+        xemb = self.emb(x)
         mask = (x != 0)
         # xemb_, unsorter = q.seq_pack(xemb, mask, ret_sorter=False)
         _, a = self.bilstm(xemb, mask=mask, ret_states=True)
@@ -506,8 +660,9 @@ def run_relations(lr=DEFAULT_LR,
                 savep="exp_bilstm_rels_",
                 test=False,
                 datafrac=1.,
-                glove=False,
-                embdim=50,
+                vanillaemb=False,
+                gloveemb=True,
+                embdim=300,
                 dim=300,
                 numlayers=2,
                 warmup=0.01,
@@ -527,17 +682,12 @@ def run_relations(lr=DEFAULT_LR,
     else:
         device = torch.device("cpu")
     # region data
+    assert(not gloveemb or not vanillaemb)
     tt = q.ticktock("script")
     tt.msg("running relation classifier with BiLSTM")
     tt.tick("loading data")
-    data = load_data(which="wordmat,wordborders,rels", datafrac=datafrac, retrelD=True)
-    trainds, devds, testds, wD, relD = data
-    rev_wD = {v: k for k, v in wD.items()}
-    def pp(ids):
-        ret = " ".join([rev_wD[idse.item()] for idse in ids if idse.item() != 0])
-        return ret
-    print(pp(trainds.tensors[0][0]))
-    print(trainds.tensors[1][0])
+    data = load_data(which="rel+borders", retrelD=True, datafrac=datafrac, wordlevel=gloveemb, rettokD=True)
+    trainds, devds, testds, relD, tokD = data
     if maskentity:
         trainds, devds, testds = replace_entity_span(trainds, devds, testds)
     else:
@@ -564,13 +714,17 @@ def run_relations(lr=DEFAULT_LR,
 
     # region model
     tt.tick("making model")
-    emb = q.WordEmb(embdim, worddic=wD)
-    if glove:
-        print("using glove")
-        gloveemb = q.WordEmb.load_glove("glove.{}d".format(embdim), selectD=wD)
-        emb = q.SwitchedWordEmb(emb).override(gloveemb)
-
-
+    if vanillaemb:
+        bert = BertModel.from_pretrained("bert-base-uncased")
+        emb = bert.embeddings.word_embeddings
+        tt.msg("using vanilla emb of size {}".format(embdim))
+        emb = torch.nn.Embedding(emb.weight.size(0), embdim)
+    elif gloveemb:
+        emb = q.WordEmb.load_glove("glove.50d", selectD=tokD)
+    else:
+        bert = BertModel.from_pretrained("bert-base-uncased")
+        emb = bert.embeddings.word_embeddings
+        embdim = bert.config.hidden_size
     bilstm = q.rnn.LSTMEncoder(embdim, *([dim] * numlayers), bidir=True, dropout_in=dropout)
     # bilstm = torch.nn.LSTM(embdim, dim, batch_first=True, num_layers=numlayers, bidirectional=True, dropout=dropout)
     m = RelationClassifier(emb=emb, bilstm=bilstm, dim=dim*2, relD=relD, dropout=dropout)
@@ -642,5 +796,5 @@ def run_relations(lr=DEFAULT_LR,
 if __name__ == '__main__':
     # test_io_span_detector()
     # q.argprun(run_span_io)
-    # q.argprun(run_span_borders)
-    q.argprun(run_relations)
+    q.argprun(run_span_borders)
+    # q.argprun(run_relations)
