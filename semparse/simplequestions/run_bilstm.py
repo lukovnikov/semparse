@@ -642,5 +642,5 @@ def run_relations(lr=DEFAULT_LR,
 if __name__ == '__main__':
     # test_io_span_detector()
     # q.argprun(run_span_io)
-    # q.argprun(run_span_borders)
-    q.argprun(run_relations)
+    q.argprun(run_span_borders)
+    # q.argprun(run_relations)
