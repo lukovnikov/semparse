@@ -360,8 +360,8 @@ def run_span_borders(lr=DEFAULT_LR,
                 gpu=0,
                 savep="exp_bilstm_span_borders_",
                 datafrac=1.,
-                vanillaemb=False,
-                embdim=300,
+                glove=False,
+                embdim=50,
                 sched="cos",
                 warmup=0.1,
                 cycles=0.5,
@@ -378,8 +378,8 @@ def run_span_borders(lr=DEFAULT_LR,
     tt = q.ticktock("script")
     tt.msg("running span border with BiLSTM")
     tt.tick("loading data")
-    data = load_data(which="span/borders", datafrac=datafrac)
-    trainds, devds, testds = data
+    data = load_data(which="wordmat,wordborders,rels", datafrac=datafrac)
+    trainds, devds, testds, wD = data
     tt.tock("data loaded")
     tt.msg("Train/Dev/Test sizes: {} {} {}".format(len(trainds), len(devds), len(testds)))
     trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
@@ -393,14 +393,11 @@ def run_span_borders(lr=DEFAULT_LR,
 
     # region model
     tt.tick("creating model")
-    # tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-    bert = BertModel.from_pretrained("bert-base-uncased")
-    emb = bert.embeddings.word_embeddings
-    if vanillaemb:
-        tt.msg("using vanilla emb of size {}".format(embdim))
-        emb = torch.nn.Embedding(emb.weight.size(0), embdim)
-    else:
-        embdim = bert.config.hidden_size
+    emb = q.WordEmb(embdim, worddic=wD)
+    if glove:
+        print("using glove")
+        gloveemb = q.WordEmb.load_glove("glove.{}d".format(embdim), selectD=wD)
+        emb = q.SwitchedWordEmb(emb).override(gloveemb)
     # inpD = tokenizer.vocab
     # q.WordEmb.masktoken = "[PAD]"
     # emb = q.WordEmb(embdim, worddic=inpD)
