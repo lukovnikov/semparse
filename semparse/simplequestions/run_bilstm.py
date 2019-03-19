@@ -378,16 +378,16 @@ def run_span_borders(lr=DEFAULT_LR,
     tt = q.ticktock("script")
     tt.msg("running span border with BiLSTM")
     tt.tick("loading data")
-    data = load_data(which="wordmat,wordborders,rels", datafrac=datafrac)
+    data = load_data(which="wordmat,wordborders", datafrac=datafrac)
     trainds, devds, testds, wD = data
     tt.tock("data loaded")
     tt.msg("Train/Dev/Test sizes: {} {} {}".format(len(trainds), len(devds), len(testds)))
     trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
     devloader = DataLoader(devds, batch_size=evalbatsize, shuffle=False)
     testloader = DataLoader(testds, batch_size=evalbatsize, shuffle=False)
-    evalds = TensorDataset(*testloader.dataset.tensors[:-1])
+    evalds = TensorDataset(*testloader.dataset.tensors[:1])
     evalloader = DataLoader(evalds, batch_size=evalbatsize, shuffle=False)
-    evalds_dev = TensorDataset(*devloader.dataset.tensors[:-1])
+    evalds_dev = TensorDataset(*devloader.dataset.tensors[:1])
     evalloader_dev = DataLoader(evalds_dev, batch_size=evalbatsize, shuffle=False)
     # endregion
 
