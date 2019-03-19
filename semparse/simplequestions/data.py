@@ -43,7 +43,7 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
     # print(trainlines[3])
 
     tt.tick("creating word matrix")
-    sm = q.StringMatrix(specialtoks=["<ENT>"])
+    sm = q.StringMatrix(specialtoks=["<ENT>"], indicate_end=True)
     sm.tokenize = lambda x: x.split()
     wordborders = np.zeros((len(trainlines) + len(devlines) + len(testlines), 2), dtype="int64")
 

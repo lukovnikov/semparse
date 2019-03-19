@@ -745,6 +745,7 @@ class BordersAndRelationClassifier(torch.nn.Module):
             maxlen = min(x.size(1), maxlen + 1)
             mask = mask[:, :maxlen]
             x = x[:, :maxlen]
+            # unberter = unberter[:, :maxlen]
         all, pool = self.bert(x, attention_mask=mask, output_all_encoded_layers=False)
 
         # endregion
