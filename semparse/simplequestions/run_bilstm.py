@@ -315,11 +315,10 @@ def get_schedule(sched=None, warmup=-1, t_total=-1, cycles=None):
     return schedule
 
 
-def replace_entity_span(*dss):
+def replace_entity_span(*dss, D=None, masktok="<ENT>", padtok="<MASK>"):
     print("replacing entity span")
-    berttok = BertTokenizer.from_pretrained("bert-base-uncased")
-    maskid = berttok.vocab["[MASK]"]
-    padid = berttok.vocab["[PAD]"]
+    maskid = D[masktok]
+    padid = D[padtok]
     outdss = []
     for ds in dss:
         tokmat, borders, rels = ds.tensors
@@ -539,7 +538,7 @@ def run_relations(lr=DEFAULT_LR,
     print(pp(trainds.tensors[0][0]))
     print(trainds.tensors[1][0])
     if maskentity:
-        trainds, devds, testds = replace_entity_span(trainds, devds, testds)
+        trainds, devds, testds = replace_entity_span(trainds, devds, testds, D=wD)
     else:
         trainds, devds, testds = [TensorDataset(ds.tensors[0], ds.tensors[2]) for ds in [trainds, devds, testds]]
     relcounts = torch.zeros(max(relD.values()) + 1)
