@@ -76,7 +76,7 @@ def load_data(p="../../data/buboqa/data/bertified_dataset_new.npz",
     elif which == "all":
         selection = ["tokmat", "iomat", "ioborders", "rels"]
     elif which == "forboth":
-        selection = ["tokmat", "unbertmat", "wordborders", "rels"]
+        selection = ["tokmat", "unbertmat", "tokborders", "wordborders", "rels"]
     else:
         raise q.SumTingWongException("unknown which mode: {}".format(which))
 
@@ -763,38 +763,53 @@ class BordersAndRelationClassifier(torch.nn.Module):
             all = self.bact(self.blin(all))
         blogits_start = self.blinstart(all)
         blogits_end = self.blinend(all)
-        bprobs_start = self.sm(blogits_start)
-        bprobs_end = self.sm(blogits_end)
-        # blogits = torch.cat([blogits_start.transpose(1, 2),
-        #                      blogits_end.transpose(1, 2)], 1)
-        word_start_probs = torch.zeros_like(bprobs_start)
-        word_end_probs = torch.zeros_like(bprobs_end)
-
-        word_start_probs.scatter_add_(1, unberter.unsqueeze(2), bprobs_start)[:, 2:]
-        word_end_probs.scatter_add_(1, unberter.unsqueeze(2), bprobs_end)[:, 2:]
-        word_end_probs = torch.cat([torch.zeros(word_end_probs.size(0), 1, 1, dtype=word_end_probs.dtype, device=word_end_probs.device),
-                                    word_end_probs[:, :-1, :]], 1)
-        word_border_probs = torch.cat([word_start_probs, word_end_probs], 2).transpose(1, 2)
+        # bprobs_start = self.sm(blogits_start)
+        # bprobs_end = self.sm(blogits_end)
+        blogits = torch.cat([blogits_start.transpose(1, 2),
+                             blogits_end.transpose(1, 2)], 1)
+        # word_start_probs = torch.zeros_like(bprobs_start)
+        # word_end_probs = torch.zeros_like(bprobs_end)
+        #
+        # word_start_probs.scatter_add_(1, unberter.unsqueeze(2), bprobs_start)[:, 2:]
+        # word_end_probs.scatter_add_(1, unberter.unsqueeze(2), bprobs_end)[:, 2:]
+        # word_end_probs = torch.cat([torch.zeros(word_end_probs.size(0), 1, 1, dtype=word_end_probs.dtype, device=word_end_probs.device),
+        #                             word_end_probs[:, :-1, :]], 1)
+        # word_border_probs = torch.cat([word_start_probs, word_end_probs], 2).transpose(1, 2)
         # endregion
-        return word_border_probs, rlogits
+        return blogits, rlogits
 
 
 class BordersAndRelationLosses(torch.nn.Module):
     def __init__(self, m, cesmoothing=0., **kw):
         super(BordersAndRelationLosses, self).__init__(**kw)
         self.m = m
-        self.blosses = [q.SmoothedCELoss(smoothing=cesmoothing, reduction="none", mode="probs"),
+        self.blosses = [q.SmoothedCELoss(smoothing=cesmoothing, reduction="none"),
                         q.SeqAccuracy(reduction="none"),
                         SpanF1Borders(reduction="none")]
         self.rlosses = [q.SmoothedCELoss(smoothing=cesmoothing, reduction="none"),
                         q.Accuracy(reduction="none")]
+        self.sm = torch.nn.Softmax(-1)
 
-    def forward(self, toks, unberter, borders, rels):
+    def forward(self, toks, unberter, tokborders, wordborders, rels):
         borderpreds, relpreds = self.m(toks, unberter)
-        borderces = self.blosses[0](borderpreds, borders)   # (batsize, 2)
+        mask = (toks != 0).float()[:, :borderpreds.size(2)]
+        borderpreds += torch.log(mask.unsqueeze(1).repeat(1, 2, 1))
+        borderces = self.blosses[0](borderpreds, tokborders)   # (batsize, 2)
         borderces = borderces.mean(1)
-        borderaccs = self.blosses[1](borderpreds, borders)   # (batsize, 2)
-        borderf1 = self.blosses[2](borderpreds, borders)
+
+        # word border acc and f1
+        unberter = unberter[:, :borderpreds.size(2)]
+        unberter = unberter.unsqueeze(1).repeat(1, 2, 1)
+        wordborderpreds = torch.zeros(borderpreds.size(0), 2, borderpreds.size(2) + 2,
+                                      dtype=borderpreds.dtype, device=borderpreds.device)
+        borderprobs = self.sm(borderpreds)
+        wordborderpreds.scatter_add_(2, unberter, borderprobs)
+        wordborderpreds = wordborderpreds[:, :, 2:]
+        borderaccs = self.blosses[1](wordborderpreds, wordborders)   # (batsize, 2)
+        borderf1 = self.blosses[2](wordborderpreds, wordborders)
+
+        # borderaccs = self.blosses[1](borderpreds, tokborders)   # (batsize, 2)
+        # borderf1 = self.blosses[2](borderpreds, tokborders)
         relces = self.rlosses[0](relpreds, rels)
         relaccs = self.rlosses[1](relpreds, rels)
         bothacc = (relaccs.long() & borderaccs.long()).float()
@@ -866,8 +881,8 @@ def run_both(lr=DEFAULT_LR,
     trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
     devloader = DataLoader(devds, batch_size=evalbatsize, shuffle=False)
     testloader = DataLoader(testds, batch_size=evalbatsize, shuffle=False)
-    evalds = TensorDataset(*testloader.dataset.tensors[:2])
-    evalds_dev = TensorDataset(*devloader.dataset.tensors[:2])
+    evalds = TensorDataset(*testloader.dataset.tensors[:1])
+    evalds_dev = TensorDataset(*devloader.dataset.tensors[:1])
     evalloader = DataLoader(evalds, batch_size=evalbatsize, shuffle=False)
     evalloader_dev = DataLoader(evalds_dev, batch_size=evalbatsize, shuffle=False)
     if test:
