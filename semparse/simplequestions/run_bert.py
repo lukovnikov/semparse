@@ -737,7 +737,7 @@ class BordersAndRelationClassifier(torch.nn.Module):
         # self.relation_model = RelationClassifier(bert, relD, dropout=dropout, mask_entity_mention=False)
         # self.border_model = BorderSpanDetector(bert, dropout=dropout, extra=False)
 
-    def forward(self, x, unberter):
+    def forward(self, x):
         # region shared
         mask = (x != 0).long()
         if self.clip_len:
@@ -791,7 +791,7 @@ class BordersAndRelationLosses(torch.nn.Module):
         self.sm = torch.nn.Softmax(-1)
 
     def forward(self, toks, unberter, tokborders, wordborders, rels):
-        borderpreds, relpreds = self.m(toks, unberter)
+        borderpreds, relpreds = self.m(toks)
         mask = (toks != 0).float()[:, :borderpreds.size(2)]
         borderpreds += torch.log(mask.unsqueeze(1).repeat(1, 2, 1))
         borderces = self.blosses[0](borderpreds, tokborders)   # (batsize, 2)
