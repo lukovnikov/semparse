@@ -19,7 +19,7 @@ DEFAULT_WREG=0.01
 DEFAULT_SMOOTHING=0.
 
 
-def load_data(p="../../data/buboqa/data/bertified_dataset.npz",
+def load_data(p="../../data/buboqa/data/bertified_dataset_new.npz",
               which="span/io",
               retrelD = False,
               retrelcounts = False,
@@ -75,6 +75,8 @@ def load_data(p="../../data/buboqa/data/bertified_dataset.npz",
         selection = ["tokmat", "ioborders", "rels"]
     elif which == "all":
         selection = ["tokmat", "iomat", "ioborders", "rels"]
+    elif which == "forboth":
+        selection = ["tokmat", "unbertmat", "wordborders", "rels"]
     else:
         raise q.SumTingWongException("unknown which mode: {}".format(which))
 
@@ -729,12 +731,13 @@ class BordersAndRelationClassifier(torch.nn.Module):
             self.bact = torch.nn.Tanh()
         self.blinstart = torch.nn.Linear(dim, 1)
         self.blinend = torch.nn.Linear(dim, 1)
+        self.sm = torch.nn.Softmax(1)
         # endregion
         # self.actout = torch.nn.Sigmoid()
         # self.relation_model = RelationClassifier(bert, relD, dropout=dropout, mask_entity_mention=False)
         # self.border_model = BorderSpanDetector(bert, dropout=dropout, extra=False)
 
-    def forward(self, x, spanio=None):
+    def forward(self, x, unberter):
         # region shared
         mask = (x != 0).long()
         if self.clip_len:
@@ -742,6 +745,7 @@ class BordersAndRelationClassifier(torch.nn.Module):
             maxlen = min(x.size(1), maxlen + 1)
             mask = mask[:, :maxlen]
             x = x[:, :maxlen]
+            unberter = unberter[:, :maxlen]
         all, pool = self.bert(x, attention_mask=mask, output_all_encoded_layers=False)
 
         # endregion
@@ -759,24 +763,34 @@ class BordersAndRelationClassifier(torch.nn.Module):
             all = self.bact(self.blin(all))
         blogits_start = self.blinstart(all)
         blogits_end = self.blinend(all)
-        blogits = torch.cat([blogits_start.transpose(1, 2),
-                             blogits_end.transpose(1, 2)], 1)
+        bprobs_start = self.sm(blogits_start)
+        bprobs_end = self.sm(blogits_end)
+        # blogits = torch.cat([blogits_start.transpose(1, 2),
+        #                      blogits_end.transpose(1, 2)], 1)
+        word_start_probs = torch.zeros_like(bprobs_start)
+        word_end_probs = torch.zeros_like(bprobs_end)
+
+        word_start_probs.scatter_add_(1, unberter.unsqueeze(2), bprobs_start)[:, 2:]
+        word_end_probs.scatter_add_(1, unberter.unsqueeze(2), bprobs_end)[:, 2:]
+        word_end_probs = torch.cat([torch.zeros(word_end_probs.size(0), 1, 1, dtype=word_end_probs.dtype, device=word_end_probs.device),
+                                    word_end_probs[:, :-1, :]], 1)
+        word_border_probs = torch.cat([word_start_probs, word_end_probs], 2).transpose(1, 2)
         # endregion
-        return blogits, rlogits
+        return word_border_probs, rlogits
 
 
 class BordersAndRelationLosses(torch.nn.Module):
     def __init__(self, m, cesmoothing=0., **kw):
         super(BordersAndRelationLosses, self).__init__(**kw)
         self.m = m
-        self.blosses = [q.SmoothedCELoss(smoothing=cesmoothing, reduction="none"),
+        self.blosses = [q.SmoothedCELoss(smoothing=cesmoothing, reduction="none", mode="probs"),
                         q.SeqAccuracy(reduction="none"),
                         SpanF1Borders(reduction="none")]
         self.rlosses = [q.SmoothedCELoss(smoothing=cesmoothing, reduction="none"),
                         q.Accuracy(reduction="none")]
 
-    def forward(self, toks, io, borders, rels):
-        borderpreds, relpreds = self.m(toks)
+    def forward(self, toks, unberter, borders, rels):
+        borderpreds, relpreds = self.m(toks, unberter)
         borderces = self.blosses[0](borderpreds, borders)   # (batsize, 2)
         borderces = borderces.mean(1)
         borderaccs = self.blosses[1](borderpreds, borders)   # (batsize, 2)
@@ -845,15 +859,15 @@ def run_both(lr=DEFAULT_LR,
 
     # region data
     tt.tick("loading data")
-    data = load_data(which="all", retrelD=True, datafrac=datafrac)
+    data = load_data(which="forboth", retrelD=True, datafrac=datafrac)
     trainds, devds, testds, relD = data
     tt.tock("data loaded")
     tt.msg("Train/Dev/Test sizes: {} {} {}".format(len(trainds), len(devds), len(testds)))
     trainloader = DataLoader(trainds, batch_size=batsize, shuffle=True)
     devloader = DataLoader(devds, batch_size=evalbatsize, shuffle=False)
     testloader = DataLoader(testds, batch_size=evalbatsize, shuffle=False)
-    evalds = TensorDataset(*testloader.dataset.tensors[:1])
-    evalds_dev = TensorDataset(*devloader.dataset.tensors[:1])
+    evalds = TensorDataset(*testloader.dataset.tensors[:2])
+    evalds_dev = TensorDataset(*devloader.dataset.tensors[:2])
     evalloader = DataLoader(evalds, batch_size=evalbatsize, shuffle=False)
     evalloader_dev = DataLoader(evalds_dev, batch_size=evalbatsize, shuffle=False)
     if test:

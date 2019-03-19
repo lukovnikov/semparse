@@ -319,6 +319,10 @@ def replace_entity_span(*dss, D=None, masktok="<ENT>", padtok="<MASK>"):
     print("replacing entity span")
     maskid = D[masktok]
     padid = D[padtok]
+    revD = {v: k for k, v in D.items()}
+    def pp(ids):
+        ret = " ".join([revD[idse.item()] for idse in ids if idse.item() != padid])
+        return ret
     outdss = []
     for ds in dss:
         tokmat, borders, rels = ds.tensors
