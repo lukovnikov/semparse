@@ -601,10 +601,18 @@ def run_relations(lr=DEFAULT_LR,
     sched = get_schedule(sched, warmup=warmup, t_total=totalsteps, cycles=cycles)
     # optim = BertAdam(params, lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps, schedule=schedmap[sched])
     optim = BertAdam(params, lr=lr, weight_decay=wreg, schedule=sched)
-    losses = [q.SmoothedCELoss(smoothing=smoothing,
-                               weight=1/relcounts.clamp_min(1e-6) if classweighted else None),
-              q.Accuracy()]
-    xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
+    losses = [
+        torch.nn.CrossEntropyLoss(size_average=True),
+        q.Accuracy()
+    ]
+    # losses = [q.SmoothedCELoss(smoothing=smoothing,
+    #                            weight=1/relcounts.clamp_min(1e-6) if classweighted else None),
+    #           q.Accuracy()]
+    xlosses = [
+        torch.nn.CrossEntropyLoss(size_average=True),
+        q.Accuracy()
+    ]
+    # xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
     trainlosses = [q.LossWrapper(l) for l in losses]
     devlosses = [q.LossWrapper(l) for l in xlosses]
     testlosses = [q.LossWrapper(l) for l in xlosses]
