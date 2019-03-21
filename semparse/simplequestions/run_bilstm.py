@@ -88,9 +88,9 @@ def load_data(p="../../data/buboqa/data/bertified_dataset_new.npz",
                 remainids.append(i)
         print("{}/{} examples retained".format(len(remainids), len(trainrels)))
         tselected_new = [sel[remainids] for sel in tselected]
-        if datafrac == 1.:
-            for a, b in zip(tselected_new, tselected):
-                assert(np.all(a == b))
+        # if datafrac == 1.:
+        #     for a, b in zip(tselected_new, tselected):
+        #         assert(np.all(a == b))
         tselected = tselected_new
 
     traindata = TensorDataset(*tselected)
