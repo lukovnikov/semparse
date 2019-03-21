@@ -488,7 +488,7 @@ class RelationClassifier(torch.nn.Module):
         a = a.view(a.size(0), -1)
         if self.extra:
             a = self.lin(a)
-            a = self.bn(a)
+            # a = self.bn(a)
             a = self.act(a)
         a = self.dropout(a)
         logits = self.linout(a)
