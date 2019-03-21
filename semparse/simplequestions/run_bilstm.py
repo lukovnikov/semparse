@@ -696,8 +696,8 @@ def run_relations(lr=DEFAULT_LR,
         emb = q.SwitchedWordEmb(emb).override(gloveemb)
 
 
-    # bilstm = q.rnn.LSTMEncoder(embdim, *([dim] * numlayers), bidir=True, dropout_in=dropout)
-    bilstm = torch.nn.LSTM(embdim, dim, batch_first=True, num_layers=numlayers, bidirectional=True, dropout=dropout)
+    bilstm = q.rnn.LSTMEncoder(embdim, *([dim] * numlayers), bidir=True, dropout_in=dropout)
+    # bilstm = torch.nn.LSTM(embdim, dim, batch_first=True, num_layers=numlayers, bidirectional=True, dropout=dropout)
     m = RelationClassifier(emb=emb, bilstm=bilstm, dim=dim, relD=relD, dropout=dropout)
     m.to(device)
 
