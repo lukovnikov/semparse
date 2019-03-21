@@ -466,8 +466,9 @@ class RelationClassifier(torch.nn.Module):
         self.emb = emb
         self.dim = dim
         if extra:
-            self.lin = torch.nn.Linear(dim, dim)
+            self.lin = torch.nn.Linear(dim*2, dim*2)
             self.act = torch.nn.ReLU()
+            self.bn = torch.nn.BatchNorm1d(dim*2)
         self.extra = extra
         self.relD = relD
         numrels = max(relD.values()) + 1
@@ -486,7 +487,9 @@ class RelationClassifier(torch.nn.Module):
         # a = hn[unsorter]
         a = a.view(a.size(0), -1)
         if self.extra:
-            a = self.act(self.lin(a))
+            a = self.lin(a)
+            a = self.bn(a)
+            a = self.act(a)
         a = self.dropout(a)
         logits = self.linout(a)
         return logits
