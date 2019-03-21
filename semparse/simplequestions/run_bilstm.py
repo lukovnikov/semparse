@@ -50,7 +50,7 @@ def load_data(p="../../data/buboqa/data/bertified_dataset_new.npz",
     tt.tick("making datasets")
     selection = which.split(",")
 
-    selected = [torch.tensor(data[sel]).long() for sel in selection]
+    selected = [torch.from_numpy(data[sel]).long() for sel in selection]
     tselected = [sel[:devstart] for sel in selected]
     vselected = [sel[devstart:teststart] for sel in selected]
     xselected = [sel[teststart:] for sel in selected]
