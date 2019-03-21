@@ -571,7 +571,7 @@ def run_relations(lr=DEFAULT_LR,
     emb = q.WordEmb(embdim, worddic=wD)
     if glove:
         print("using glove")
-        stoi, vectors, dim = torch.load("../../data/buboqa/data/sq_glove300.pt")
+        stoi, vectors, dim = torch.load("../../data/buboqa/data/sq_glove300d.pt")
         gloveemb = q.WordEmb(embdim, worddic=stoi, _weight=vectors)
         # gloveemb = q.WordEmb.load_glove("glove.{}d".format(embdim), selectD=wD)
         if fixembed:
