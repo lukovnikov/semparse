@@ -579,6 +579,7 @@ def run_relations(lr=DEFAULT_LR,
             if k in wD:
                 vectors[wD[k]] = vectors_[v]
                 stoi[k] = wD[k]
+        print("{} words in stoi that are in wD".format(len(stoi)))
         gloveemb = q.WordEmb(embdim, worddic=stoi, _weight=vectors)
         # gloveemb = q.WordEmb.load_glove("glove.{}d".format(embdim), selectD=wD)
         if fixembed:
