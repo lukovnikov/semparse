@@ -492,7 +492,7 @@ class RelationClassifier(torch.nn.Module):
             a = self.act(a)
         a = self.dropout(a)
         logits = self.linout(a)
-        logits = torch.nn.functional.log_softmax(logits, dim=1)
+        # logits = torch.nn.functional.log_softmax(logits, dim=1)
         return logits
 
 
@@ -714,14 +714,14 @@ def run_relations(lr=DEFAULT_LR,
     # optim = BertAdam(params, lr=lr, weight_decay=wreg, warmup=warmup, t_total=totalsteps, schedule=schedmap[sched])
     optim = torch.optim.Adam(params, lr=lr, weight_decay=wreg)
     losses = [
-        torch.nn.NLLLoss(size_average=True),
+        torch.nn.CrossEntropyLoss(size_average=True),
         q.Accuracy()
     ]
     # losses = [q.SmoothedCELoss(smoothing=smoothing,
     #                            weight=1/relcounts.clamp_min(1e-6) if classweighted else None),
     #           q.Accuracy()]
     xlosses = [
-        torch.nn.NLLLoss(size_average=True),
+        torch.nn.CrossEntropyLoss(size_average=True),
         q.Accuracy()
     ]
     # xlosses = [q.SmoothedCELoss(smoothing=smoothing), q.Accuracy()]
