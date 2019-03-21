@@ -571,6 +571,7 @@ def run_relations(lr=DEFAULT_LR,
     if glove:
         print("using glove")
         gloveemb = q.WordEmb.load_glove("glove.{}d".format(embdim), selectD=wD)
+        gloveemb.freeze()
         emb = q.SwitchedWordEmb(emb).override(gloveemb)
 
 
