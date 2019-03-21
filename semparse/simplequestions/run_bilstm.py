@@ -472,7 +472,7 @@ class RelationClassifier(torch.nn.Module):
         self.extra = extra
         self.relD = relD
         numrels = max(relD.values()) + 1
-        self.linout = torch.nn.Linear(dim, numrels)
+        self.linout = torch.nn.Linear(dim*2, numrels)
         self.dropout = torch.nn.Dropout(p=dropout)
         # self.actout = torch.nn.Sigmoid()
 
@@ -576,7 +576,7 @@ def run_relations(lr=DEFAULT_LR,
 
     bilstm = q.rnn.LSTMEncoder(embdim, *([dim] * numlayers), bidir=True, dropout_in=dropout)
     # bilstm = torch.nn.LSTM(embdim, dim, batch_first=True, num_layers=numlayers, bidirectional=True, dropout=dropout)
-    m = RelationClassifier(emb=emb, bilstm=bilstm, dim=dim*2, relD=relD, dropout=dropout)
+    m = RelationClassifier(emb=emb, bilstm=bilstm, dim=dim, relD=relD, dropout=dropout)
     m.to(device)
     tt.tock("made model")
     # endregion
