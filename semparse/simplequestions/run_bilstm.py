@@ -547,7 +547,7 @@ def run_relations(lr=DEFAULT_LR,
     else:
         trainds, devds, testds = [TensorDataset(ds.tensors[0], ds.tensors[2]) for ds in [trainds, devds, testds]]
     relcounts = torch.zeros(max(relD.values()) + 1)
-    trainrelcounts = torch.bincount(trainds.tensors[1])
+    trainrelcounts = torch.tensor(np.bincount(trainds.tensors[1].detach().cpu().numpy()))
     relcounts[:len(trainrelcounts)] += trainrelcounts.float()
     tt.tock("data loaded")
     tt.msg("Train/Dev/Test sizes: {} {} {}".format(len(trainds), len(devds), len(testds)))
