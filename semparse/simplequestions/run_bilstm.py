@@ -518,6 +518,7 @@ def run_relations(lr=DEFAULT_LR,
                 sched="cos",
                 evalbatsize=-1,
                 classweighted=False,
+                fixembed=False,
                 ):
     print(locals())
     settings = locals().copy()
@@ -571,7 +572,8 @@ def run_relations(lr=DEFAULT_LR,
     if glove:
         print("using glove")
         gloveemb = q.WordEmb.load_glove("glove.{}d".format(embdim), selectD=wD)
-        gloveemb.freeze()
+        if fixembed:
+            gloveemb.freeze()
         emb = q.SwitchedWordEmb(emb).override(gloveemb)
 
 
