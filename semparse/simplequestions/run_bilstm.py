@@ -668,6 +668,17 @@ def run_relations(lr=DEFAULT_LR,
         trainds, devds, testds = replace_entity_span(trainds, devds, testds, D=wD)
     else:
         trainds, devds, testds = [TensorDataset(ds.tensors[0], ds.tensors[2]) for ds in [trainds, devds, testds]]
+
+    for i in range(10):
+        question = trainds.tensors[0][i]
+        print(pp(question))
+    for i in range(10):
+        question = devds.tensors[0][i]
+        print(pp(question))
+    for i in range(10):
+        question = testds.tensors[0][i]
+        print(pp(question))
+
     relcounts = torch.zeros(max(relD.values()) + 1)
     trainrelcounts = torch.tensor(np.bincount(trainds.tensors[1].detach().cpu().numpy()))
     relcounts[:len(trainrelcounts)] += trainrelcounts.float()
