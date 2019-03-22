@@ -672,9 +672,11 @@ def run_relations(lr=DEFAULT_LR,
     for i in range(10):
         question = trainds.tensors[0][i]
         print(pp(question))
+    print()
     for i in range(10):
         question = devds.tensors[0][i]
         print(pp(question))
+    print()
     for i in range(10):
         question = testds.tensors[0][i]
         print(pp(question))
