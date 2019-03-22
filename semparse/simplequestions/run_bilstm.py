@@ -719,6 +719,7 @@ def run_relations(lr=DEFAULT_LR,
         # gloveemb = q.WordEmb.load_glove("glove.{}d".format(embdim), selectD=wD)
         if fixembed:
             gloveemb.freeze()
+            emb.freeze()
         emb = q.SwitchedWordEmb(emb).override(gloveemb)
 
 
