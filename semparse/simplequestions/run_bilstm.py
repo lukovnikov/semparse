@@ -361,6 +361,7 @@ def run_span_borders(lr=DEFAULT_LR,
                 savep="exp_bilstm_span_borders_",
                 datafrac=1.,
                 glove=False,
+                fixembed=False,
                 embdim=50,
                 sched="cos",
                 warmup=0.1,
@@ -396,7 +397,19 @@ def run_span_borders(lr=DEFAULT_LR,
     emb = q.WordEmb(embdim, worddic=wD)
     if glove:
         print("using glove")
-        gloveemb = q.WordEmb.load_glove("glove.{}d".format(embdim), selectD=wD)
+        stoi_, vectors_, dim = torch.load("../../data/buboqa/data/sq_glove300d.pt")
+        # map vectors from custom glove ids to wD ids
+        vectors = torch.zeros(max(wD.values())+1, embdim, device=vectors_.device, dtype=vectors_.dtype)
+        stoi = {}
+        for k, v in stoi_.items():
+            if k in wD:
+                vectors[wD[k]] = vectors_[v]
+                stoi[k] = wD[k]
+        print("{} words in stoi that are in wD".format(len(stoi)))
+        gloveemb = q.WordEmb(embdim, worddic=stoi, _weight=vectors)
+        # gloveemb = q.WordEmb.load_glove("glove.{}d".format(embdim), selectD=wD)
+        if fixembed:
+            gloveemb.freeze()
         emb = q.SwitchedWordEmb(emb).override(gloveemb)
     # inpD = tokenizer.vocab
     # q.WordEmb.masktoken = "[PAD]"
