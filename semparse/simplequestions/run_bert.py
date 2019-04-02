@@ -805,7 +805,7 @@ class BordersAndRelationLosses(torch.nn.Module):
         borderprobs = self.sm(borderpreds)
         wordborderpreds.scatter_add_(2, unberter, borderprobs)
         wordborderpreds = wordborderpreds[:, :, 2:]
-        borderaccs = self.blosses[1](wordborderpreds, wordborders)   # (batsize, 2)
+        borderaccs = self.blosses[1](wordborderpreds, wordborders)
         borderf1 = self.blosses[2](wordborderpreds, wordborders)
 
         # borderaccs = self.blosses[1](borderpreds, tokborders)   # (batsize, 2)
@@ -948,6 +948,7 @@ def run_both(lr=DEFAULT_LR,
             i += 1
         os.mkdir(savep + str(i))
         savedir = savep + str(i)
+        print(savedir)
         # save model
         # torch.save(m, open(os.path.join(savedir, "model.pt"), "wb"))
         # save settings

@@ -315,7 +315,8 @@ def run(indexp="../../data/buboqa/indexes/",
 
 
 def get_dsF1(p="exp_bert_both_11",
-             dp="../../data/buboqa/data/bertified_dataset.npz"):
+             dp="../../data/buboqa/data/bertified_dataset_new.npz"):
+    """ Assumes wordpiece-level predictions for spans"""
     print(p)
     data = np.load(dp)
     ioborders, devstart, teststart = data["ioborders"], data["devstart"], data["teststart"]
@@ -364,7 +365,7 @@ def get_dsF1(p="exp_bert_both_11",
 
 def run_borders(p="exp_bert_both_11",
                 qp="../../data/buboqa/data/processed_simplequestions_dataset/all.txt",
-                dp="../../data/buboqa/data/bertified_dataset.npz",
+                dp="../../data/buboqa/data/bertified_dataset_new.npz",
                 namesp="../../data/buboqa/data/names_2M.labels.bloom",
                 ):
     """ Convert wordpiece level borders to wordlevel borders, check with available names """

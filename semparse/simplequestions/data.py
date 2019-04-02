@@ -51,7 +51,10 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
         try:
             sm.add(line_[5])
             previo = "O"
-            ioline = line_[6].replace("'", "").replace("[", "").replace("]", "")
+            ioline = line_[6]
+            if "[" in ioline or not "I" in ioline:
+                print(ioline)
+            ioline = ioline.replace("'", "").replace("[", "").replace("]", "").replace(",", "")
             io = ioline.split() + ["O"]
             k = 0
             for j in range(len(io)):
@@ -76,6 +79,7 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
     word_teststart = i
     for line in tqdm(testlines):
         do_line(line, i)
+        i += 1
 
     sm.finalize()
     print(len(sm.D))
