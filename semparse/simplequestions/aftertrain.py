@@ -314,24 +314,25 @@ def run(indexp="../../data/buboqa/indexes/",
     print(len(names))
 
 
-def get_dsF1(p="exp_bert_both_11",
+def get_dsF1(p="exp_bert_both_23",
              dp="../../data/buboqa/data/bertified_dataset_new.npz"):
     """ Assumes wordpiece-level predictions for spans"""
     print(p)
     data = np.load(dp)
-    ioborders, devstart, teststart = data["ioborders"], data["devstart"], data["teststart"]
+    wordbordersgold, devstart, teststart = data["wordborders"], data["devstart"], data["teststart"]
     tokmat, unbertmat = data["tokmat"], data["unbertmat"]
     borderpreds = torch.tensor(np.load(os.path.join(p, "borderpreds.dev.npy")))
-    bordergold = torch.tensor(ioborders[devstart:teststart]).long()
+    #bordergold = torch.tensor(ioborders[devstart:teststart]).long()
     unbertmat = torch.tensor(unbertmat[devstart:teststart]).long()
     tokmat = torch.tensor(tokmat[devstart:teststart]).long()
     mask_test = (tokmat != 0).float()
     borderprobs = torch.nn.Softmax(-1)(borderpreds + torch.log(mask_test.unsqueeze(1)))
     word_border_probs = torch.zeros(len(unbertmat), 2, borderpreds.size(2), dtype=torch.float)
     word_border_probs.scatter_add_(2, unbertmat.unsqueeze(1).repeat(1, 2, 1), borderprobs)
-    word_border_golds = unbertmat.gather(1, bordergold)
+    word_border_golds = torch.tensor(wordbordersgold)[devstart:teststart] #unbertmat.gather(1, bordergold)
 
     pred_start, pred_end = torch.argmax(word_border_probs, 2).split(1, dim=1)
+    pred_start, pred_end = pred_start - 2, pred_end - 2
     gold_start, gold_end = word_border_golds.split(1, dim=1)
     overlap_start = torch.max(pred_start, gold_start)
     overlap_end = torch.min(pred_end, gold_end)
@@ -345,6 +346,7 @@ def get_dsF1(p="exp_bert_both_11",
     print(f1.item(), precision.item(), recall.item())
 
     pred_start, pred_end = torch.argmax(word_border_probs, 2).split(1, dim=1)
+    pred_start, pred_end = pred_start - 2, pred_end - 2
     gold_start, gold_end = word_border_golds.split(1, dim=1)
     overlap_start = torch.max(pred_start, gold_start)
     overlap_end = torch.min(pred_end, gold_end)
@@ -529,7 +531,7 @@ def run_borders(p="exp_bert_both_11",
 
 if __name__ == '__main__':
     # build_entity_bloom()
-    get_dsF1()
-    q.argprun(run_borders)
+    q.argprun(get_dsF1)
+    # q.argprun(run_borders)
     # test_index()
     # build_entity_index(testsearch=True)
