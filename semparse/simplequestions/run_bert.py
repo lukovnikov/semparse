@@ -1,8 +1,7 @@
 import qelos as q
 import numpy as np
-from pytorch_pretrained_bert import BertModel, BertTokenizer, BertAdam, \
-    WarmupCosineSchedule, WarmupConstantSchedule, WarmupLinearSchedule, LRSchedule, \
-    WarmupCosineWithRestartsSchedule
+from pytorch_pretrained_bert import BertModel, BertTokenizer
+from pytorch_pretrained_bert.optimization import *
 import torch
 from tabulate import tabulate
 from torch.utils.data import TensorDataset, DataLoader
@@ -827,7 +826,9 @@ def get_schedule(sched=None, warmup=-1, t_total=-1, cycles=None):
     elif sched == "cos":
         schedule = WarmupCosineSchedule(warmup=warmup, t_total=t_total, cycles=cycles)
     elif sched == "cosrestart":
-        schedule = WarmupCosineWithRestartsSchedule(warmup=warmup, t_total=t_total, cycles=cycles)
+        schedule = WarmupCosineWithWarmupRestartsSchedule(warmup=warmup, t_total=t_total, cycles=cycles)
+    elif sched == "coshardrestart":
+        schedule = WarmupCosineWithHardRestartsSchedule(warmup=warmup, t_total=t_total, cycles=cycles)
     else:
         raise Exception("unknown schedule '{}'".format(sched))
     return schedule
