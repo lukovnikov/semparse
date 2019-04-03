@@ -314,7 +314,7 @@ def run(indexp="../../data/buboqa/indexes/",
     print(len(names))
 
 
-def get_dsF1(p="exp_bert_both_23",
+def get_dsF1(p="exp_bilstm_span_borders_12",     #p="exp_bert_both_23",
              dp="../../data/buboqa/data/bertified_dataset_new.npz"):
     """ Assumes wordpiece-level predictions for spans"""
     print(p)
@@ -347,6 +347,52 @@ def get_dsF1(p="exp_bert_both_23",
 
     pred_start, pred_end = torch.argmax(word_border_probs, 2).split(1, dim=1)
     pred_start, pred_end = pred_start - 2, pred_end - 2
+    gold_start, gold_end = word_border_golds.split(1, dim=1)
+    overlap_start = torch.max(pred_start, gold_start)
+    overlap_end = torch.min(pred_end, gold_end)
+    overlap = (overlap_end - overlap_start).float().clamp_min(0)
+    recall = overlap / (gold_end - gold_start).float().clamp_min(1e-6)
+    precision = overlap / (pred_end - pred_start).float().clamp_min(1e-6)
+    f1 = 2 * recall * precision / (recall + precision).clamp_min(1e-6)
+    print((recall > 1).nonzero(), (precision > 1).nonzero())
+    recall = recall.mean()
+    precision = precision.mean()
+    acc = (f1 == 1).float().mean()
+    f1 = f1.mean()
+    print("Averaged F1, precision and recall:")
+    print(f1.item(), precision.item(), recall.item())
+    print("Span accuracy")
+    print(acc)
+
+
+def get_dsF1_wordlevel(p="exp_bilstm_span_borders_12",     #p="exp_bert_both_23",
+             dp="../../data/buboqa/data/bertified_dataset_new.npz"):
+    """ Assumes wordpiece-level predictions for spans"""
+    print(p)
+    data = np.load(dp)
+    wordbordersgold, devstart, teststart = data["wordborders"], data["devstart"], data["teststart"]
+    tokmat = data["wordmat"]
+    borderpreds = torch.tensor(np.load(os.path.join(p, "borderpreds.dev.npy")))
+    #bordergold = torch.tensor(ioborders[devstart:teststart]).long()
+    tokmat = torch.tensor(tokmat[devstart:teststart]).long()
+    mask_test = (tokmat != 0).float()
+    word_border_probs = torch.nn.Softmax(-1)(borderpreds + torch.log(mask_test.unsqueeze(1)))
+    word_border_golds = torch.tensor(wordbordersgold)[devstart:teststart] #unbertmat.gather(1, bordergold)
+
+    pred_start, pred_end = torch.argmax(word_border_probs, 2).split(1, dim=1)
+    gold_start, gold_end = word_border_golds.split(1, dim=1)
+    overlap_start = torch.max(pred_start, gold_start)
+    overlap_end = torch.min(pred_end, gold_end)
+    overlap = (overlap_end - overlap_start).float().clamp_min(0).sum()
+    expected = (gold_end - gold_start).float().clamp_min(1e-6).sum()
+    predicted = (pred_end - pred_start).float().clamp_min(1e-6).sum()
+    recall = overlap / expected
+    precision = overlap / predicted
+    f1 = 2 * recall * precision / (recall + precision).clamp_min(1e-6)
+    print("Dataset-wide F1, precision and recall:")
+    print(f1.item(), precision.item(), recall.item())
+
+    pred_start, pred_end = torch.argmax(word_border_probs, 2).split(1, dim=1)
     gold_start, gold_end = word_border_golds.split(1, dim=1)
     overlap_start = torch.max(pred_start, gold_start)
     overlap_end = torch.min(pred_end, gold_end)
@@ -531,7 +577,7 @@ def run_borders(p="exp_bert_both_11",
 
 if __name__ == '__main__':
     # build_entity_bloom()
-    q.argprun(get_dsF1)
+    q.argprun(get_dsF1_wordlevel)
     # q.argprun(run_borders)
     # test_index()
     # build_entity_index(testsearch=True)
