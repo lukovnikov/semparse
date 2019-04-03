@@ -854,6 +854,7 @@ def run_both(lr=DEFAULT_LR,
                 freezeemb=False,
                 large=False,
                 datafrac=1.,
+                savemodel=False,
                 ):
     settings = locals().copy()
     print(locals())
@@ -951,7 +952,8 @@ def run_both(lr=DEFAULT_LR,
         savedir = savep + str(i)
         print(savedir)
         # save model
-        # torch.save(m, open(os.path.join(savedir, "model.pt"), "wb"))
+        if savemodel:
+            torch.save(m, open(os.path.join(savedir, "model.pt"), "wb"))
         # save settings
         json.dump(settings, open(os.path.join(savedir, "settings.json"), "w"))
         # save relation dictionary

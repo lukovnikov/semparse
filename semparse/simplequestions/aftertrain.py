@@ -411,7 +411,8 @@ def get_dsF1_wordlevel(p="exp_bilstm_span_borders_12",     #p="exp_bert_both_23"
     print(acc)
 
 
-def run_borders(p="exp_bert_both_11",
+def run_borders(p="exp_bert_both_23",
+                which="dev",
                 qp="../../data/buboqa/data/processed_simplequestions_dataset/all.txt",
                 dp="../../data/buboqa/data/bertified_dataset_new.npz",
                 namesp="../../data/buboqa/data/names_2M.labels.bloom",
@@ -419,7 +420,7 @@ def run_borders(p="exp_bert_both_11",
     """ Convert wordpiece level borders to wordlevel borders, check with available names """
     # region load data
     berttok = BertTokenizer.from_pretrained("bert-base-uncased")
-    borderpreds = torch.tensor(np.load(os.path.join(p, "borderpreds.dev.npy")))
+    borderpreds = torch.tensor(np.load(os.path.join(p, "borderpreds.{}.npy".format(which))))
     print(borderpreds.shape)
     data = np.load(dp)
     print(data.keys())
@@ -430,9 +431,14 @@ def run_borders(p="exp_bert_both_11",
     questions = open(qp, encoding="utf8").readlines()
     # endregion
 
-    tokmat_test = torch.tensor(tokmat[devstart:teststart]).long()
-    unbert_test = torch.tensor(unbertmat[devstart:teststart]).long()
-    _questions_test = questions[devstart:teststart]
+    if which == "dev":
+        slicer = slice(devstart, teststart)
+    else:
+        slicer = slice(teststart)
+    tokmat_test = torch.tensor(tokmat[slicer]).long()
+    unbert_test = torch.tensor(unbertmat[slicer]).long()
+    _questions_test = questions[slicer]
+
     questions_test = [["[CLS]"] + qe.split("\t")[5].split() + ["[SEP]"] for qe in _questions_test]
     borders_test_gold = [["O"] + qe.split("\t")[6].split() + ["O"] for qe in _questions_test]
     uris_gold = [qe.split("\t")[1] for qe in _questions_test]
@@ -571,13 +577,13 @@ def run_borders(p="exp_bert_both_11",
     #     debug_print(list(someoverlap)[k])
     #     print(_questions_test[list(someoverlap)[k]])
 
-    with open(os.path.join(p, "cands.test.pkl"), "wb") as f:
+    with open(os.path.join(p, "entcands.{}.pkl".format(which)), "wb") as f:
         pkl.dump(allcands, f)
 
 
 if __name__ == '__main__':
     # build_entity_bloom()
-    q.argprun(get_dsF1_wordlevel)
-    # q.argprun(run_borders)
+    # q.argprun(get_dsF1_wordlevel)
+    q.argprun(run_borders)
     # test_index()
     # build_entity_index(testsearch=True)
