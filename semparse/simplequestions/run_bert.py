@@ -870,7 +870,7 @@ def run_both(lr=DEFAULT_LR,
     if cycles == -1:
         if sched == "cos":
             cycles = 0.5
-        elif sched == "cosrestart":
+        elif sched in ["cosrestart", "coshardrestart"]:
             cycles = 1.0
 
     # region data
