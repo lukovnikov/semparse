@@ -7,6 +7,7 @@ from tabulate import tabulate
 from unidecode import unidecode
 from collections import OrderedDict
 from tqdm import tqdm
+import pickle as pkl
 
 
 def get_all_rels(p="../../data/buboqa/data/SimpleQuestions_v2/freebase-subsets/freebase-FB2M.txt",
@@ -27,6 +28,34 @@ def get_all_rels(p="../../data/buboqa/data/SimpleQuestions_v2/freebase-subsets/f
     print(rels)
     with open(outp, "w") as f:
         f.writelines(rels)
+
+
+def get_all_types(p="../../data/buboqa/data/SimpleQuestions_v2/freebase-subsets/freebase-FB2M.txt",
+                  outp="../../data/buboqa/data/ent2type.pkl"):
+    types = set()
+    typere = re.compile("www\.freebase\.com/m/(.+)")
+    typerel = ["www.freebase.com/common/topic/notable_types"]
+    ent2types = {}
+    for line in tqdm(open(p).readlines()):
+        if line.split("\t")[1] in typerel:
+            splits = line.strip().split("\t")
+            subj = typere.match(splits[0]).group(1)
+            obj = typere.match(splits[2]).group(1)
+            if subj not in ent2types:
+                ent2types[subj] = set()
+            ent2types[subj].add(obj)
+            types.add(obj)
+    types= sorted(types)
+    types = [rel+"\n" for rel in types]
+    print("".join(types))
+    print(len(types))
+    maxtypesperent = max([len(v) for k, v in ent2types.items()])
+    print("max types per ent: {}".format(maxtypesperent))
+    ent2type = {k: list(v)[0] if len(v) != 0 else "none" for k, v in ent2types.items()}
+    print(len(ent2type))
+    pkl.dump(open(outp, "w"), ent2type)
+    # with open(outp, "w") as f:
+    #     f.writelines(rels)
 
 
 def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
@@ -249,4 +278,5 @@ def run(lr=0):
 
 
 if __name__ == '__main__':
-    q.argprun(run)
+    # q.argprun(run)
+    q.argprun(get_all_types)

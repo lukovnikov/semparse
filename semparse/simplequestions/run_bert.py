@@ -892,6 +892,7 @@ def run_both(lr=DEFAULT_LR,
                                 batch_size=batsize, shuffle=False)
         testloader = DataLoader(TensorDataset(*testloader.dataset[:10]),
                                 batch_size=batsize, shuffle=False)
+    print("number of relations: {}".format(len(relD)))
     # endregion
 
     # region model
