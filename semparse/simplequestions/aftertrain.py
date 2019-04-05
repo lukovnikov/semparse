@@ -415,7 +415,6 @@ def run_borders(p="exp_bert_both_23",
                 which="dev",
                 qp="../../data/buboqa/data/processed_simplequestions_dataset/all.txt",
                 dp="../../data/buboqa/data/bertified_dataset_new.npz",
-                namesp="../../data/buboqa/data/names_2M.labels.bloom",
                 ):
     """ Convert wordpiece level borders to wordlevel borders, check with available names """
     # region load data
@@ -434,7 +433,7 @@ def run_borders(p="exp_bert_both_23",
     if which == "dev":
         slicer = slice(devstart, teststart)
     else:
-        slicer = slice(teststart)
+        slicer = slice(teststart, None)
     tokmat_test = torch.tensor(tokmat[slicer]).long()
     unbert_test = torch.tensor(unbertmat[slicer]).long()
     _questions_test = questions[slicer]
@@ -470,9 +469,6 @@ def run_borders(p="exp_bert_both_23",
         print(tabulate([twtoks, twstartbars, twendbars, borders_test_gold[k]]))
     # print(borderprobs[1])
     debug_print(9)
-
-    # load bloom filter for entity names
-    entnameset = pkl.load(open(namesp, "rb"))
 
     index = build_entity_index(testsearch=False)
 
@@ -549,7 +545,7 @@ def run_borders(p="exp_bert_both_23",
                 at50ents.add(uri)
             if len(at150ents) < 150:
                 if uri not in at150ents:
-                    cands.append(uri)
+                    cands.append(searchres_i)
                 at150ents.add(uri)
         allcands.append(cands)
         if not uris_gold[i] in at1ent:

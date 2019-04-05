@@ -9,13 +9,36 @@ from collections import OrderedDict
 from tqdm import tqdm
 
 
+def get_all_rels(p="../../data/buboqa/data/SimpleQuestions_v2/freebase-subsets/freebase-FB2M.txt",
+                 outp="../../data/buboqa/data/rels.txt"):
+    rels = set()
+    relre = re.compile("www\.freebase\.com/(.+)")
+    for line in tqdm(open(p).readlines()):
+        m = relre.match(line.split("\t")[1])
+        if m:
+            relparts = m.group(1).split("/")
+            rel = "fb:" + ".".join(relparts)
+            rels.add(rel)
+        else:
+            raise Exception("not matching regex")
+    print(len(rels))
+    rels = sorted(rels)
+    rels = [rel+"\n" for rel in rels]
+    print(rels)
+    with open(outp, "w") as f:
+        f.writelines(rels)
+
+
 def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
-              outp="../../data/buboqa/data/bertified_dataset_new"):
+              relp="../../data/buboqa/data/rels.txt",
+              outp="../../data/buboqa/data/bertified_dataset_v2",
+              ):
     tt = q.ticktock("dataloader")
     tt.tick("loading files")
     trainlines = open(p+"train.txt", encoding="utf8").readlines()
     devlines = open(p+"valid.txt", encoding="utf8").readlines()
     testlines = open(p+"test.txt", encoding="utf8").readlines()
+    allrels = [x.strip() for x in open(relp).readlines()]
     tt.tock("files loaded")
     tt.tick("splitting")
     trainlines = [line.strip().split("\t") for line in trainlines]
@@ -180,15 +203,16 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
     tt.tock("tested")
 
     tt.tick("doing relations")
-    allrels = bert_rel_train + bert_rel_dev + bert_rel_test
+    # allrels = bert_rel_train + bert_rel_dev + bert_rel_test
     allrelwcounts = dict(zip(set(allrels), [0]*len(allrels)))
     for rel in bert_rel_train:
         allrelwcounts[rel] += 1
     allrelwcounts = sorted(allrelwcounts.items(), key=lambda x: x[1], reverse=True)
     print(allrelwcounts[0])
     tt.msg("{} total unique rels".format(len(allrelwcounts)))
-    relD = dict(zip([rel[0] for rel in allrelwcounts],
-                           range(len(allrelwcounts))))
+    assert(len(allrels) == len(allrelwcounts))
+    relD = dict(zip([rel for rel in allrels],
+                           range(len(allrels))))
     rels = [relD[xe] for xe in allrels]
     rels = np.array(rels).astype("int32")
     relcounts = [rel[1] for rel in allrelwcounts]
@@ -218,8 +242,6 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
     _tokmat = reloaded["tokmat"]
     print(reloaded["devstart"])
     tt.tock("reloaded")
-
-
 
 
 def run(lr=0):
