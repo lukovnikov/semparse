@@ -20,7 +20,7 @@ DEFAULT_WREG=0.01
 DEFAULT_SMOOTHING=0.
 
 
-def load_data(p="../../data/buboqa/data/bertified_dataset_new.npz",
+def load_data(p="../../data/buboqa/data/bertified_dataset_v2.npz",
               which="wordmat,borders,rels",
               retrelD = False,
               retrelcounts = False,
