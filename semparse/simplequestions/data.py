@@ -203,17 +203,16 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
     tt.tock("tested")
 
     tt.tick("doing relations")
-    # allrels = bert_rel_train + bert_rel_dev + bert_rel_test
-    allrelwcounts = dict(zip(set(allrels), [0]*len(allrels)))
+    bert_rel_all = bert_rel_train + bert_rel_dev + bert_rel_test
+    allrelwcounts = dict(zip(allrels, [0]*len(allrels)))
     for rel in bert_rel_train:
         allrelwcounts[rel] += 1
     allrelwcounts = sorted(allrelwcounts.items(), key=lambda x: x[1], reverse=True)
     print(allrelwcounts[0])
     tt.msg("{} total unique rels".format(len(allrelwcounts)))
-    assert(len(allrels) == len(allrelwcounts))
     relD = dict(zip([rel for rel in allrels],
                            range(len(allrels))))
-    rels = [relD[xe] for xe in allrels]
+    rels = [relD[xe] for xe in bert_rel_all]
     rels = np.array(rels).astype("int32")
     relcounts = [rel[1] for rel in allrelwcounts]
     relcounts = np.array(relcounts).astype("int32")
