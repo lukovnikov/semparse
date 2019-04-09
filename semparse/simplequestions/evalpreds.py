@@ -4,8 +4,11 @@ import numpy as np
 from tqdm import tqdm
 
 
-def run(predp="exp_bert_both_8/output.txt",
-        goldp="../../data/buboqa/data/processed_simplequestions_dataset/test.txt"):
+def run(predp="exp_bert_both_23/output.{}.txt",
+        which="test",
+        goldp="../../data/buboqa/data/processed_simplequestions_dataset/{}.txt"):
+    predp = predp.format(which)
+    goldp = goldp.format(which if which == "test" else "valid")
     predlines = open(predp, "r", encoding="utf8").readlines()
     goldlines = open(goldp, "r", encoding="utf8").readlines()
     entacc, relacc, allacc, total = 0, 0, 0, 0

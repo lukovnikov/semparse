@@ -39,8 +39,8 @@ def get_all_types(p="../../data/buboqa/data/SimpleQuestions_v2/freebase-subsets/
     for line in tqdm(open(p).readlines()):
         if line.split("\t")[1] in typerel:
             splits = line.strip().split("\t")
-            subj = typere.match(splits[0]).group(1)
-            obj = typere.match(splits[2]).group(1)
+            subj = "fb:m."+typere.match(splits[0]).group(1)
+            obj = "fb:m."+typere.match(splits[2]).group(1)
             if subj not in ent2types:
                 ent2types[subj] = set()
             ent2types[subj].add(obj)
@@ -53,13 +53,40 @@ def get_all_types(p="../../data/buboqa/data/SimpleQuestions_v2/freebase-subsets/
     print("max types per ent: {}".format(maxtypesperent))
     ent2type = {k: list(v)[0] if len(v) != 0 else "none" for k, v in ent2types.items()}
     print(len(ent2type))
-    pkl.dump(open(outp, "w"), ent2type)
+    pkl.dump(ent2type, open(outp, "wb"))
     # with open(outp, "w") as f:
     #     f.writelines(rels)
 
 
+def get_names_for_entities(namespath="../../data/buboqa/data/freebase_names/names.trimmed.2M.txt",
+                           outpath="../../data/buboqa/indexes/names_2M_withtypes.pkl",
+                           withtype=True):
+    print("getting names map...")
+    names = {}
+    with open(namespath, 'r', encoding="utf8") as f:
+        for line in tqdm(f):
+            items = line.strip().split("\t")
+            if len(items) != 3:
+                print("ERROR: line - {}".format(line))
+                continue
+            entity = items[0]
+            nametype = items[1]
+            literal = items[2].strip()
+            if literal != "":
+                if entity not in names:
+                    names[entity] = []
+                if withtype:
+                    names[entity].append((literal, nametype))
+                else:
+                    names[entity].append(literal)
+    if outpath is not None:
+        pkl.dump(names, open(outpath, "wb"))
+    return names
+
+
 def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
               relp="../../data/buboqa/data/rels.txt",
+              typep="../../data/buboqa/data/ent2type.pkl",
               outp="../../data/buboqa/data/bertified_dataset_v2",
               ):
     tt = q.ticktock("dataloader")
@@ -68,6 +95,7 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
     devlines = open(p+"valid.txt", encoding="utf8").readlines()
     testlines = open(p+"test.txt", encoding="utf8").readlines()
     allrels = [x.strip() for x in open(relp).readlines()]
+    ent2type = pkl.load(open(typep, "rb"))
     tt.tock("files loaded")
     tt.tick("splitting")
     trainlines = [line.strip().split("\t") for line in trainlines]
@@ -141,6 +169,8 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     def bertify(line):
         try:
+            subj = line[1]
+            subjtype = ent2type[subj] if subj in ent2type else "none"
             rel = line[3]
             sent = "[CLS] {} [SEP]".format(line[5].lower())
             span = "O {} O".format(line[6]).split()
@@ -157,7 +187,7 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
             print(e)
             print(line)
             # raise e
-        return bertsent, bertspan, rel, unberter
+        return bertsent, bertspan, rel, unberter, subjtype
 
     k = 1331
     ret = bertify(trainlines[k])
@@ -166,13 +196,15 @@ def load_data(p="../../data/buboqa/data/processed_simplequestions_dataset/",
     print(tabulate([trainlines[k][5].split(), trainlines[k][6].split()]))
 
     tt.tick("bertifying")
-    bert_tokens_train, bert_io_train, bert_rel_train, unberter_train = zip(*[bertify(line) for line in trainlines])
-    bert_tokens_dev,   bert_io_dev,   bert_rel_dev,   unberter_dev   = zip(*[bertify(line) for line in devlines])
-    bert_tokens_test,  bert_io_test,  bert_rel_test,  unberter_test  = zip(*[bertify(line) for line in testlines])
+    bert_tokens_train, bert_io_train, bert_rel_train, unberter_train, bert_type_train = zip(*[bertify(line) for line in trainlines])
+    bert_tokens_dev,   bert_io_dev,   bert_rel_dev,   unberter_dev, bert_type_dev   = zip(*[bertify(line) for line in devlines])
+    bert_tokens_test,  bert_io_test,  bert_rel_test,  unberter_test, bert_type_test  = zip(*[bertify(line) for line in testlines])
     tt.tock("bertified")
 
     print(tabulate([bert_tokens_train[3], bert_io_train[3], unberter_train[3]]))
     print(bert_rel_train[3])
+
+    print("{} entities in train have 'none' type".format())
 
     # construct numpy matrix with ids in bert vocabulary
     # and also, numpy matrix with spans
@@ -279,4 +311,5 @@ def run(lr=0):
 
 if __name__ == '__main__':
     # q.argprun(run)
-    q.argprun(get_all_types)
+    # q.argprun(get_all_types)
+    q.argprun(get_names_for_entities)

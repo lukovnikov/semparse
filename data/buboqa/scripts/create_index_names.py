@@ -6,7 +6,7 @@ import pickle
 
 from util import www2fb, clean_uri, processed_text
 
-def get_names_for_entities(namespath):
+def get_names_for_entities(namespath, withtype=False):
     print("getting names map...")
     names = {}
     with open(namespath, 'r') as f:
@@ -19,11 +19,13 @@ def get_names_for_entities(namespath):
                 print("ERROR: line - {}".format(line))
                 continue
             entity = items[0]
-            type = items[1]
+            nametype = items[1]
             literal = items[2].strip()
             if literal != "":
-                if names.get(entity) is None:
-                    names[entity] = [(literal)]
+                if entity not in names:
+                    names[entity] = []
+                if withtype:
+                    names[entity].append((literal, nametype))
                 else:
                     names[entity].append(literal)
     return names
