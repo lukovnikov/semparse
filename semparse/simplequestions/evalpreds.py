@@ -21,10 +21,10 @@ def run(predp="exp_bert_both_23/output.{}.txt",
         entacc += float(predent == goldent)
         relacc += float(predrel == goldrel)
         allacc += float(predent == goldent and predrel == goldrel)
-        if predent != goldent or predrel != goldrel:
-            print(predline.strip(), goldline.strip())
-            print(predent, goldent, predrel, goldrel)
-            print()
+        # if predent != goldent or predrel != goldrel:
+            # print(predline.strip(), goldline.strip())
+            # print(predent, goldent, predrel, goldrel)
+            # print()
         total += 1.
 
     print("{:.3}% total acc\n\t - {:.3}% ent acc\n\t - {:.3}% rel acc".format(
