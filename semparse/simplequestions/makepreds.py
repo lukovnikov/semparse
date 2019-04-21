@@ -9,7 +9,8 @@ import re
 
 
 def get_ent_stats(p="../../data/buboqa/data/SimpleQuestions_v2/freebase-subsets/freebase-FB2M.txt",
-                  outp="fbdegrees.2M.pkl"):
+                  fb2wp="../../data/buboqa/data/fb2w.nt",
+                  outp="graphstats.2M.pkl"):
     entre = re.compile("www\.freebase\.com/(.+)")
     degrees = {}
     with open(p) as f:
@@ -23,13 +24,23 @@ def get_ent_stats(p="../../data/buboqa/data/SimpleQuestions_v2/freebase-subsets/
             for o in os:
                 for x in [s, o]:
                     if x not in degrees:
-                        degrees[x] = {"in": 0, "out": 0}
+                        degrees[x] = {"in": 0, "out": 0, "wiki": 0}
                 if p not in degrees:
                     degrees[p] = {"deg": 0}
                 degrees[s]["out"] += 1
                 degrees[o]["in"] += 1
                 degrees[p]["deg"] += 1
                 # print(line)
+    wikicount = 0
+    with open(fb2wp) as f:
+        for line in tqdm(f):
+            line = line.strip().split("\t")
+            if len(line) == 3 and re.match("<http://rdf\.freebase\.com/ns/(.+)>", line[0]):
+                uri = "fb:" + re.match("<http://rdf\.freebase\.com/ns/(.+)>", line[0]).group(1)
+                if uri in degrees:
+                    degrees[uri]["wiki"] = 1
+                    wikicount += 1
+    print("{} entities with wiki link".format(wikicount))
 
     # maxindegree, maxoutdegree, maxreldegree = 0, 0, 0
     # for fbid, v in degrees.items():
@@ -77,6 +88,7 @@ def rerank(canddir="exp_bert_both_23",
             reldegree = cand["rel"]["degree"]
             relrank = cand["rel"]["rank"]
             relrank = +1 if relrank <= 5 else -1
+            entwiki = cand["entry"]["haswiki"]
 
             features = np.asarray([entsim/100.,
                                    relprob,
@@ -84,8 +96,9 @@ def rerank(canddir="exp_bert_both_23",
                                    entindegree,
                                    entoutdegree,
                                    reldegree,
-                                   relrank]).astype("float64")
-            weights = np.asarray([1e4, 1e2, 0, 1e-2, 0, 0, 0]).astype("float64")
+                                   relrank,
+                                   entwiki]).astype("float64")
+            weights = np.asarray([1e4, 1e2, 0, 1e-2, 0, 0, 0, 1e-4]).astype("float64")
 
             fs = (features * weights).sum()
             # fs = entsim/100 * entnumrels
@@ -139,9 +152,9 @@ def run(borderp="exp_bert_both_23",
         predp="exp_bert_both_23",
         dp="../../data/buboqa/data/bertified_dataset_new.npz",
         reachp="../../data/buboqa/indexes/reachability_2M.pkl",
-        entinfo="fbdegrees.2M.pkl",
+        entinfo="graphstats.2M.pkl",
         topk=50,
-        which="dev",
+        which="test",
         outf="output.{}.txt",
         candoutp="candinfo.{}.pkl",
         goldp="../../data/buboqa/data/processed_simplequestions_dataset/{}.txt"):
@@ -196,9 +209,11 @@ def run(borderp="exp_bert_both_23",
             if canduri in entdegrees:
                 c["entry"]["indegree"] = entdegrees[canduri]["in"]
                 c["entry"]["outdegree"] = entdegrees[canduri]["out"]
+                c["entry"]["haswiki"] = entdegrees[canduri]["wiki"]
             else:
                 c["entry"]["indegree"] = 0
                 c["entry"]["outdegree"] = 0
+                c["entry"]["haswiki"] = 0
             if c["rel"]["relid"] in entdegrees:
                 c["rel"]["degree"] = entdegrees[c["rel"]["relid"]]["deg"]
             else:
@@ -221,6 +236,7 @@ def run(borderp="exp_bert_both_23",
             reldegree = cand["rel"]["degree"]
             relrank = cand["rel"]["rank"]
             relrank = +1 if relrank <= 5 else -1
+            entwiki = cand["entry"]["haswiki"]
 
             features = np.asarray([entsim/100.,
                                    relprob,
@@ -228,8 +244,9 @@ def run(borderp="exp_bert_both_23",
                                    entindegree,
                                    entoutdegree,
                                    reldegree,
-                                   relrank])
-            weights = np.asarray([1e4, 1e2, 0, 1e-2, 0, 0, 1e6])
+                                   relrank,
+                                   entwiki])
+            weights = np.asarray([1e4, 1e2, 0, 1e-2, 0, 0, 1e6, 0])
 
             fs = (features * weights).sum()
             # fs = entsim/100 * entnumrels

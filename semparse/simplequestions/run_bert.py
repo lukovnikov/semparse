@@ -818,7 +818,7 @@ class BordersAndRelationLosses(torch.nn.Module):
 
 def get_schedule(sched=None, warmup=-1, t_total=-1, cycles=None):
     if sched == "none" or sched is None:
-        schedule = LRSchedule(warmup=warmup, t_total=t_total)
+        schedule = ConstantLR()
     elif sched == "lin":
         schedule = WarmupConstantSchedule(warmup=warmup, t_total=t_total)
     elif sched == "ang":
