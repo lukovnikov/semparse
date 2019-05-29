@@ -97,6 +97,88 @@ class PointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaskedOut
         return out
 
 
+class LuongCell(torch.nn.Module, q.Stateful):
+    statevars = ["_outvec_tm1", "outvec_t0", "_saved_ctx", "_saved_ctx_mask"]
+    def __init__(self, emb=None, core=None, att=None, merge:q.DecCellMerge=q.ConcatDecCellMerge(),
+                 out=None, feed_att=False, return_alphas=False, return_scores=False, return_other=False,
+                 dropout=0, **kw):
+        """
+
+        :param emb:
+        :param core:
+        :param att:
+        :param merge:
+        :param out:         if None, out_vec (after merge) is returned
+        :param feed_att:
+        :param h_hat_0:
+        :param kw:
+        """
+        super(LuongCell, self).__init__(**kw)
+        self.emb, self.core, self.att, self.merge, self.out = emb, core, att, merge, out
+        self.feed_att = feed_att
+        self._outvec_tm1 = None    # previous attention summary
+        self.outvec_t0 = None
+        self.return_alphas = return_alphas
+        self.return_scores = return_scores
+        self.return_other = return_other
+        self.dropout = torch.nn.Dropout(dropout)
+        self._saved_ctx, self._saved_ctx_mask = None, None
+
+    def save_ctx(self, ctx, ctx_mask=None):
+        self._saved_ctx, self._saved_ctx_mask = ctx, ctx_mask
+
+    def batch_reset(self):
+        self.outvec_t0 = None
+        self._outvec_tm1 = None
+        self._saved_ctx = None
+        self._saved_ctx_mask = None
+
+    def forward(self, x_t, ctx=None, ctx_mask=None, **kw):
+        if ctx is None:
+            ctx, ctx_mask = self._saved_ctx, self._saved_ctx_mask
+        assert (ctx is not None)
+
+        self.out.update(x_t)        # update output layer with current input
+
+        embs = self.emb(x_t)        # embed input tokens
+        if q.issequence(embs) and len(embs) == 2:   # unpack if necessary
+            embs, mask = embs
+
+        if self.feed_att:
+            if self._outvec_tm1 is None:
+                assert (self.outvec_t0 is not None)   #"h_hat_0 must be set when feed_att=True"
+                self._outvec_tm1 = self.outvec_t0
+            core_inp = torch.cat([embs, self._outvec_tm1], 1)     # append previous attention summary
+        else:
+            core_inp = embs
+
+        core_out = self.core(core_inp)  # feed through rnn
+
+        alphas, summaries, scores = self.att(core_out, ctx, ctx_mask=ctx_mask, values=ctx)  # do attention
+        out_vec = self.merge(core_out, summaries, core_inp)
+        out_vec = self.dropout(out_vec)
+        self._outvec_tm1 = out_vec      # store outvec (this is how Luong, 2015 does it)
+
+        ret = tuple()
+        if self.out is None:
+            ret += (out_vec,)
+        else:
+            if isinstance(self.out, PointerGeneratorOut):
+                _out_vec = self.out(out_vec, scores=scores)
+            else:
+                _out_vec = self.out(out_vec)
+            ret += (_out_vec,)
+
+        # other returns
+        if self.return_alphas:
+            ret += (alphas,)
+        if self.return_scores:
+            ret += (scores,)
+        if self.return_other:
+            ret += (embs, core_out, summaries)
+        return ret[0] if len(ret) == 1 else ret
+
+
 class PointerGeneratorCell(torch.nn.Module):        # from q.rnn.LuongCell
     def __init__(self, emb=None, core=None, att=None, merge:q.rnn.DecCellMerge=q.rnn.ConcatDecCellMerge(),
                  out=None, feed_att=False, return_alphas=False, return_scores=False, return_other=False,
@@ -155,7 +237,7 @@ class PointerGeneratorCell(torch.nn.Module):        # from q.rnn.LuongCell
         if self.out is None:
             ret += (out_vec,)
         else:
-            _out_vec = self.out(out_vec, scores=scores)
+            _out_vec = self.out(out_vec, scores=scores)     # TODO: feeding scores into output is the only change
             ret += (_out_vec,)
 
         # other returns
@@ -170,7 +252,8 @@ class PointerGeneratorCell(torch.nn.Module):        # from q.rnn.LuongCell
 
 
 # region self-pointing pointer-generator (two pointers, one generator)
-class SelfPointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaskedOut
+class SelfPointerGeneratorOut(torch.nn.Module, q.Stateful):     # integrates q.rnn.AutoMaskedOut
+    statevars = ["_ctx_ids", "prev_x_tokens"]
     """
     Performs the generation of tokens or copying of input.
 
@@ -253,7 +336,8 @@ class SelfPointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaske
         return out
 
 
-class SelfPointerGeneratorCell(torch.nn.Module):        # from q.rnn.LuongCell
+class SelfPointerGeneratorCell(torch.nn.Module, q.Stateful):        # from q.rnn.LuongCell
+    statevars = ["_outvec_tm1", "outvec_t0", "_saved_ctx", "_saved_ctx_mask", "prev_coreouts"]
     def __init__(self, emb=None, core=None, att=None, selfatt=None, merge:q.rnn.DecCellMerge=q.rnn.ConcatDecCellMerge(),
                  out:SelfPointerGeneratorOut=None, feed_att=False, return_alphas=False, return_scores=False, return_other=False,
                  dropout=0, **kw):
@@ -280,13 +364,21 @@ class SelfPointerGeneratorCell(torch.nn.Module):        # from q.rnn.LuongCell
         self.return_other = return_other
         self.dropout = torch.nn.Dropout(dropout)
         self.prev_coreouts = None   # previous states of decoder that have been used as queries
+        self._saved_ctx, self._saved_ctx_mask = None, None
+
+    def save_ctx(self, ctx, ctx_mask=None):
+        self._saved_ctx, self._saved_ctx_mask = ctx, ctx_mask
 
     def batch_reset(self):
         self.outvec_t0 = None
         self._outvec_tm1 = None
         self.prev_coreouts = None   # previous states of decoder that have been used as queries
+        self._saved_ctx = None
+        self._saved_ctx_mask = None
 
     def forward(self, x_t, ctx=None, ctx_mask=None, **kw):
+        if ctx is None:
+            ctx, ctx_mask = self._saved_ctx, self._saved_ctx_mask
         assert (ctx is not None)
 
         # if isinstance(self.out, q.rnn.AutoMaskedOut):
@@ -310,8 +402,8 @@ class SelfPointerGeneratorCell(torch.nn.Module):        # from q.rnn.LuongCell
         # do normal attention over input
         alphas, summaries, scores = self.att(core_out, ctx, ctx_mask=ctx_mask, values=ctx)  # do attention
 
-        # do self-attention
-        if self.prev_coreouts is not None:
+        # do attention over decoded sequence
+        if self.selfatt is not None and self.prev_coreouts is not None:
             selfalphas, selfsummaries, selfscores = self.selfatt(core_out, self.prev_coreouts)  # do self-attention
         else:
             selfalphas, selfsummaries, selfscores = None, None, None
@@ -322,10 +414,10 @@ class SelfPointerGeneratorCell(torch.nn.Module):        # from q.rnn.LuongCell
         self._outvec_tm1 = out_vec      # store outvec (this is how Luong, 2015 does it)
 
         # save coreouts
-        if self.prev_coreouts is None:
-            self.prev_coreouts = core_out.unsqueeze(1)      # introduce a sequence dimension
-        else:
+        if self.selfatt is not None and self.prev_coreouts is not None:
             self.prev_coreouts = torch.cat([self.prev_coreouts, core_out.unsqueeze(1)], 1)
+        else:
+            self.prev_coreouts = core_out.unsqueeze(1)      # introduce a sequence dimension
 
         ret = tuple()
         if self.out is None:
