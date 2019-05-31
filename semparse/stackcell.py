@@ -97,16 +97,46 @@ class PointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaskedOut
 
 
 class StackCellCombiner(torch.nn.Module, ABC):
+    """
+    Combines parent and child embeddings into subtree embedding.
+    """
     @abstractmethod
     def forward(self, x, mask):     # x is (batsize, numargs, dim), mask (batsize, numargs)
                                     # x[:, 0] is parent embedding, following embeddings are children embeddings
         pass
 
 
+class BasicCombiner(StackCellCombiner):
+    """
+    Combines parent and child embeddings into subtree embedding.
+    y = W * [p, c] where p is parent embedding and c is average of child embeddings
+    """
+    def __init__(self, dim, **kw):
+        super(BasicCombiner, self).__init__(**kw)
+        self.W = torch.nn.Linear(dim*2, dim, bias=False)
+
+    def forward(self, x, mask):         # (batsize, numchildren, dim), (batsize, numchildren) --> (batsize, dim)
+        x_ = x * mask.float().unsqueeze(2)
+        parents = x_[:, 0]
+        children = x_[:, 1:].sum(1) / mask[:, 1:].float().sum(1).unsqueeze(1).clamp_min(1e-6)     # (batsize, dim)
+        inp = torch.cat([parents, children], 1)
+        ret = self.W(inp)
+        return ret
+
+
+class ForwardCombiner(StackCellCombiner):
+    def __init__(self, dim, maxnumchildren=4, **kw):
+
+
+
+class GLUishCombiner(StackCellCombiner):
+    pass        # TODO: implement
+                # - assumes few children (<4/5)
+                # - computes a gate and a transform
+
+
 class StackCell(torch.nn.Module, q.Stateful):
     statevars = ["_outvec_tm1", "outvec_t0", "_saved_ctx", "_saved_ctx_mask", "_core_state_history", "_combiner_history", "_stack", "_t"]
-    # TODO: remember all previous core states
-    # TODO
     TERMINAL = 0
     NONTERMINAL = 1
     REDUCE = 2
@@ -344,3 +374,16 @@ class StackCell(torch.nn.Module, q.Stateful):
         if self.return_other:
             ret += (embs, core_out, summaries)
         return ret[0] if len(ret) == 1 else ret
+
+
+
+
+
+def test_training_stackcell(lr=0.001,
+                            ):
+
+
+
+
+if __name__ == '__main__':
+    q.argprun(test_training_stackcell)

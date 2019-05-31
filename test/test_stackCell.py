@@ -1,6 +1,6 @@
 from unittest import TestCase
 import qelos as q
-from semparse.stackcell import StackCellCombiner, StackCell
+from semparse.stackcell import StackCell, BasicCombiner, StackCellCombiner
 from semparse.attention import BasicAttention
 import torch
 
@@ -10,6 +10,7 @@ class TestStackCell(TestCase):
         D = "<MASK> [RED] NT(START) NT(a) T(b) NT(c) T(d) T(e) NT(f) T(g) T(h) T(i)"
         D = dict(zip(D.split(), range(len(D.split()))))
         tok2act = {k: (2 if k == "[RED]" else 1 if k[:2] == "NT" else 0) for k in D}
+
 
         class CustomCombiner(StackCellCombiner):
             def forward(self, _x, mask):
@@ -36,7 +37,8 @@ class TestStackCell(TestCase):
         embdim = 4
         coredim = 5
         emb = q.WordEmb(embdim, worddic=D)
-        core = q.LSTMCell(embdim, coredim)
+        core = q.LSTMCell(embdim, coredim, dropout_rec=.1)
+        # combiner = BasicCombiner(embdim)
         combiner = CustomCombiner()
         att = BasicAttention()
         out = CustomWordLinout(coredim*2, worddic=D)
