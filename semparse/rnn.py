@@ -1,6 +1,7 @@
 import torch
 import qelos as q
 import numpy as np
+from semparse import attention as att
 
 
 # region pointer generator
@@ -99,9 +100,22 @@ class PointerGeneratorOut(torch.nn.Module):     # integrates q.rnn.AutoMaskedOut
 
 class LuongCell(torch.nn.Module, q.Stateful):
     statevars = ["_outvec_tm1", "outvec_t0", "_saved_ctx", "_saved_ctx_mask"]
-    def __init__(self, emb=None, core=None, att=None, merge:q.DecCellMerge=q.ConcatDecCellMerge(),
-                 out=None, feed_att=False, return_alphas=False, return_scores=False, return_other=False,
-                 dropout=0, **kw):
+
+    RET_NORMAL = ["ret_normal"]
+    RET_ALPHAS = ["alphas"]
+    RET_SCORES = ["scores"]
+    RET_OTHER =  ["embs", "core_out", "summaries"]
+
+    def __init__(self,
+                 emb=None,
+                 core=None,
+                 att=att.BasicAttention(),
+                 merge:q.DecCellMerge=q.ConcatDecCellMerge(),
+                 out=None,
+                 feed_att=False,
+                 dropout=0,
+                 returns=None,
+                 **kw):
         """
 
         :param emb:
@@ -118,9 +132,7 @@ class LuongCell(torch.nn.Module, q.Stateful):
         self.feed_att = feed_att
         self._outvec_tm1 = None    # previous attention summary
         self.outvec_t0 = None
-        self.return_alphas = return_alphas
-        self.return_scores = return_scores
-        self.return_other = return_other
+        self.returns = [self.RET_NORMAL] if returns is None else returns
         self.dropout = torch.nn.Dropout(dropout)
         self._saved_ctx, self._saved_ctx_mask = None, None
 
@@ -138,7 +150,8 @@ class LuongCell(torch.nn.Module, q.Stateful):
             ctx, ctx_mask = self._saved_ctx, self._saved_ctx_mask
         assert (ctx is not None)
 
-        self.out.update(x_t)        # update output layer with current input
+        if self.out is not None and hasattr(self.out, "update"):
+            self.out.update(x_t)        # update output layer with current input
 
         embs = self.emb(x_t)        # embed input tokens
         if q.issequence(embs) and len(embs) == 2:   # unpack if necessary
@@ -159,23 +172,17 @@ class LuongCell(torch.nn.Module, q.Stateful):
         out_vec = self.dropout(out_vec)
         self._outvec_tm1 = out_vec      # store outvec (this is how Luong, 2015 does it)
 
-        ret = tuple()
         if self.out is None:
-            ret += (out_vec,)
+            ret_normal = out_vec
         else:
             if isinstance(self.out, PointerGeneratorOut):
                 _out_vec = self.out(out_vec, scores=scores)
             else:
                 _out_vec = self.out(out_vec)
-            ret += (_out_vec,)
+            ret_normal = _out_vec
 
-        # other returns
-        if self.return_alphas:
-            ret += (alphas,)
-        if self.return_scores:
-            ret += (scores,)
-        if self.return_other:
-            ret += (embs, core_out, summaries)
+        l = locals()
+        ret = tuple([l[k] for k in sum(self.returns, [])])
         return ret[0] if len(ret) == 1 else ret
 
 

@@ -1,6 +1,7 @@
 import torch
 import qelos as q
 from abc import ABC, abstractmethod
+from semparse import attention as att
 
 
 class PointerGeneratorOutGate(torch.nn.Module):
@@ -126,7 +127,8 @@ class BasicCombiner(StackCellCombiner):
 
 class ForwardCombiner(StackCellCombiner):
     def __init__(self, dim, maxnumchildren=4, **kw):
-
+        super(ForwardCombiner, self).__init__(**kw)
+        pass
 
 
 class GLUishCombiner(StackCellCombiner):
@@ -140,19 +142,23 @@ class StackCell(torch.nn.Module, q.Stateful):
     TERMINAL = 0
     NONTERMINAL = 1
     REDUCE = 2
+
+    RET_NORMAL = ["ret_normal"]
+    RET_ALPHAS = ["alphas"]
+    RET_SCORES = ["scores"]
+    RET_OTHER =  ["embs", "core_out", "summaries"]
+
     def __init__(self,
                  emb=None,          # embeds input tokens and determines stack action
                  tok2act=None,
                  core=None,         # performs update
                  combiner:StackCellCombiner=None,     # merges children and parent vectors into subtree vector
-                 att=None,
+                 att=att.BasicAttention(),
                  merge:q.DecCellMerge=q.ConcatDecCellMerge(),
                  out=None,
                  feed_att=False,
-                 return_alphas=False,
-                 return_scores=False,
-                 return_other=False,
                  dropout=0,
+                 returns=None,
                  **kw):
         """
 
@@ -171,9 +177,7 @@ class StackCell(torch.nn.Module, q.Stateful):
         self.feed_att = feed_att
         self._outvec_tm1 = None    # previous attention summary
         self.outvec_t0 = None
-        self.return_alphas = return_alphas
-        self.return_scores = return_scores
-        self.return_other = return_other
+        self.returns = [self.RET_NORMAL] if returns is None else returns
         self.dropout = torch.nn.Dropout(dropout)
         self._t = 0
         self._saved_ctx, self._saved_ctx_mask = None, None
@@ -329,7 +333,8 @@ class StackCell(torch.nn.Module, q.Stateful):
             ctx, ctx_mask = self._saved_ctx, self._saved_ctx_mask
         assert (ctx is not None)
 
-        self.out.update(x_t)
+        if self.out is not None and hasattr(self.out, "update"):
+            self.out.update(x_t)
 
         embs = self.emb(x_t)        # embed input tokens
         if isinstance(self.emb, q.WordEmb):   # unpack if necessary
@@ -356,32 +361,23 @@ class StackCell(torch.nn.Module, q.Stateful):
         out_vec = self.dropout(out_vec)
         self._outvec_tm1 = out_vec      # store outvec (this is how Luong, 2015 does it)
 
-        ret = tuple()
         if self.out is None:
-            ret += (out_vec,)
+            ret_normal = out_vec
         else:
             if isinstance(self.out, PointerGeneratorOut):
                 _out_vec = self.out(out_vec, scores=scores)
             else:
                 _out_vec = self.out(out_vec)
-            ret += (_out_vec,)
+            ret_normal = _out_vec
 
-        # other returns
-        if self.return_alphas:
-            ret += (alphas,)
-        if self.return_scores:
-            ret += (scores,)
-        if self.return_other:
-            ret += (embs, core_out, summaries)
+        l = locals()
+        ret = tuple([l[k] for k in sum(self.returns, [])])
         return ret[0] if len(ret) == 1 else ret
-
-
-
 
 
 def test_training_stackcell(lr=0.001,
                             ):
-
+    pass
 
 
 
