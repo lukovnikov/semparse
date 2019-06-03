@@ -280,7 +280,7 @@ def run_seq2seq_(lr=0.001,
 
     optim = torch.optim.Adam(m.parameters(), lr=lr, weight_decay=wreg)
     tlosses = [q.CELoss(mode="logits", ignore_index=0), q.Accuracy(ignore_index=0), q.SeqAccuracy(ignore_index=0)]
-    xlosses = [q.CELoss(mode="logits", ignore_index=0), q.SeqAccuracy(ignore_index=0)]
+    xlosses = [q.CELoss(mode="logits", ignore_index=0), q.Accuracy(ignore_index=0), q.SeqAccuracy(ignore_index=0)]
     tlosses = [q.LossWrapper(l) for l in tlosses]
     vlosses = [q.LossWrapper(l) for l in xlosses]
     xlosses = [q.LossWrapper(l) for l in xlosses]
