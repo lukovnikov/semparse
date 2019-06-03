@@ -197,7 +197,7 @@ def run_seq2seq(lr=0.001,
         q.pikax.RangeHP("dropout", .05, .5),
         q.pikax.ChoiceHP("embdim", [64, 128, 256, 512], type="int"),
         q.pikax.ChoiceHP("encdim", [128, 256, 512], type="int"),
-        q.pikax.ChoiceHP("batsize", [64, 128, 256], type="int"),
+        q.pikax.ChoiceHP("batsize", [32, 64, 128], type="int"),
         q.pikax.ChoiceHP("numlayers", [1, 2, 3]),
         q.pikax.RangeHP("wreg", 1e-2, 1e-9, log_scale=True)
     ],
@@ -207,7 +207,7 @@ def run_seq2seq(lr=0.001,
 
 
 def run_seq2seq_(lr=0.001,
-                batsize=128,
+                batsize=32,
                 evalbatsize=256,
                 epochs=100,
                 warmup=5,
@@ -279,7 +279,7 @@ def run_seq2seq_(lr=0.001,
     tt.tock(f"ran a batch: {test_y.size()}")
 
     optim = torch.optim.Adam(m.parameters(), lr=lr, weight_decay=wreg)
-    tlosses = [q.CELoss(mode="logits", ignore_index=0), q.SeqAccuracy(ignore_index=0)]
+    tlosses = [q.CELoss(mode="logits", ignore_index=0), q.Accuracy(ignore_index=0), q.SeqAccuracy(ignore_index=0)]
     xlosses = [q.CELoss(mode="logits", ignore_index=0), q.SeqAccuracy(ignore_index=0)]
     tlosses = [q.LossWrapper(l) for l in tlosses]
     vlosses = [q.LossWrapper(l) for l in xlosses]
