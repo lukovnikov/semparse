@@ -210,6 +210,7 @@ def run_seq2seq_(lr=0.001,
                 batsize=128,
                 evalbatsize=256,
                 epochs=100,
+                warmup=5,
                 embdim=50,
                 encdim=100,
                 numlayers=2,
@@ -288,7 +289,7 @@ def run_seq2seq_(lr=0.001,
     testloop = partial(q.test_epoch, model=testm, dataloader=xloader, losses=xlosses, device=device)
 
     lrplateau = q.util.ReduceLROnPlateau(optim, mode="min",
-        factor=.1, patience=1, cooldown=1, warmup=5, threshold=0., verbose=True, eps=1e-9)
+        factor=.1, patience=1, cooldown=1, warmup=warmup, threshold=0., verbose=True, eps=1e-9)
     on_after_valid = [lambda: lrplateau.step(vlosses[0].get_epoch_error())]
     _devloop = partial(devloop, on_end=on_after_valid)
     stoptrain = [lambda : all([pg["lr"] <= 1e-7 for pg in optim.param_groups])]
