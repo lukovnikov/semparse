@@ -411,8 +411,8 @@ def get_dsF1_wordlevel(p="exp_bilstm_span_borders_12",     #p="exp_bert_both_23"
     print(acc)
 
 
-def run_borders(p="exp_bert_both_23",
-                which="dev",
+def run_borders(p="exp_bert_both_25",
+                which="test",
                 qp="../../data/buboqa/data/processed_simplequestions_dataset/all.txt",
                 dp="../../data/buboqa/data/bertified_dataset_new.npz",
                 ):

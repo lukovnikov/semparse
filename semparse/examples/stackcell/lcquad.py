@@ -311,4 +311,4 @@ def run_seq2seq_(lr=0.001,
 
 
 if __name__ == '__main__':
-    q.argprun(run_seq2seq_)
+    q.argprun(run_seq2seq)

@@ -65,7 +65,7 @@ def get_ent_stats(p="../../data/buboqa/data/SimpleQuestions_v2/freebase-subsets/
         pkl.dump(degrees, f)
 
 
-def rerank(canddir="exp_bert_both_23",
+def rerank(canddir="exp_bert_both_24",
            which="test",
            goldp="../../data/buboqa/data/processed_simplequestions_dataset/{}.txt",
            outp="rerank_out.{}.txt"):
@@ -148,8 +148,8 @@ def rerank(canddir="exp_bert_both_23",
 
 
 # TODO: exclude relations that have not been seen during training
-def run(borderp="exp_bert_both_23",
-        predp="exp_bert_both_23",
+def run(borderp="exp_bert_both_24",
+        predp="exp_bert_both_24",
         dp="../../data/buboqa/data/bertified_dataset_new.npz",
         reachp="../../data/buboqa/indexes/reachability_2M.pkl",
         entinfo="graphstats.2M.pkl",
@@ -186,7 +186,7 @@ def run(borderp="exp_bert_both_23",
         rels_i = zip(sorted(relD.items(), key=lambda x: x[1]),
                      list(relationprobs[i]))
         rels_i = sorted(rels_i, key=lambda x: x[1], reverse=True)
-        # get best rel for every candidate entity
+        # get bes t rel for every candidate entity
         maxindegree, maxoutdegree, maxreldegree = 1, 1, 1
         for c in cands_i:
             canduri = c["entry"]["uri"]
@@ -316,5 +316,5 @@ def run(borderp="exp_bert_both_23",
 
 if __name__ == '__main__':
     # get_ent_stats()
-    # run()
+    run()
     rerank()
